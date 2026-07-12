@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "118316373648",
+    "project_id": "zonix-93c4a",
+    "storage_bucket": "zonix-93c4a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:118316373648:android:6957ee1028e0644a272a15",
+        "android_client_info": {
+          "package_name": "com.example.zonixweb"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKGObbnSzBIp8J3qqDSUwEPuI-qfVUhRo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:118316373648:android:c855f57872be9607272a15",
+        "android_client_info": {
+          "package_name": "com.zonix.pos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKGObbnSzBIp8J3qqDSUwEPuI-qfVUhRo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
