@@ -2891,6 +2891,14 @@ class _TransactionsModalState extends State<_TransactionsModal> {
       initialChildSize: 0.85,
       minChildSize: 0.5,
       maxChildSize: 0.95,
+      // Without snap, a drag that starts on the transaction list (e.g.
+      // scrolling past the top/bottom of the list) gets picked up by the
+      // sheet itself instead of just bouncing the list, and the sheet
+      // drifts down to an arbitrary size instead of settling back — snap
+      // pins it to one of these three sizes so it always resolves cleanly
+      // instead of getting stuck part-way down the screen.
+      snap: true,
+      snapSizes: const [0.5, 0.85, 0.95],
       expand: false,
       builder: (context, scrollController) {
         return Padding(
@@ -2964,34 +2972,48 @@ class _TxFilterRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final customLabel = selected == _TxFilter.custom && customRange != null
         ? '${_formatDate(customRange!.start)} - ${_formatDate(customRange!.end)}'
         : 'Custom';
+
+    Widget chip({required String label, required bool isSelected, required VoidCallback onTap, Widget? avatar}) {
+      return ChoiceChip(
+        avatar: avatar,
+        label: Text(label),
+        selected: isSelected,
+        onSelected: (_) => onTap(),
+        // The default unselected/selected colors here (transparent /
+        // pale secondaryContainer) read as nearly invisible against this
+        // sheet's light background — force a dark, high-contrast pair
+        // instead so it's obvious at a glance which filter is active.
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        selectedColor: colorScheme.primary,
+        checkmarkColor: colorScheme.onPrimary,
+        labelStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+          color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+        ),
+      );
+    }
 
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
-        ChoiceChip(
-          label: const Text('Today'),
-          selected: selected == _TxFilter.today,
-          onSelected: (_) => onSelect(_TxFilter.today),
-        ),
-        ChoiceChip(
-          label: const Text('Weekly'),
-          selected: selected == _TxFilter.weekly,
-          onSelected: (_) => onSelect(_TxFilter.weekly),
-        ),
-        ChoiceChip(
-          label: const Text('Monthly'),
-          selected: selected == _TxFilter.monthly,
-          onSelected: (_) => onSelect(_TxFilter.monthly),
-        ),
-        ChoiceChip(
-          avatar: const Icon(Icons.date_range_outlined, size: 16),
-          label: Text(customLabel),
-          selected: selected == _TxFilter.custom,
-          onSelected: (_) => onSelect(_TxFilter.custom),
+        chip(label: 'Today', isSelected: selected == _TxFilter.today, onTap: () => onSelect(_TxFilter.today)),
+        chip(label: 'Weekly', isSelected: selected == _TxFilter.weekly, onTap: () => onSelect(_TxFilter.weekly)),
+        chip(label: 'Monthly', isSelected: selected == _TxFilter.monthly, onTap: () => onSelect(_TxFilter.monthly)),
+        chip(
+          label: customLabel,
+          isSelected: selected == _TxFilter.custom,
+          onTap: () => onSelect(_TxFilter.custom),
+          avatar: Icon(
+            Icons.date_range_outlined,
+            size: 16,
+            color: selected == _TxFilter.custom ? colorScheme.onPrimary : colorScheme.onSurface,
+          ),
         ),
       ],
     );
