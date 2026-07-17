@@ -7,6 +7,7 @@ import '../models/shop.dart';
 import '../models/shop_stats.dart';
 import '../models/shop_transaction.dart';
 import '../models/shop_user.dart';
+import '../models/user_session.dart';
 
 class ShopCodeTakenException implements Exception {
   const ShopCodeTakenException();
@@ -53,6 +54,24 @@ class ShopService {
     final doc = await _firestore.collection('shops').doc(slug).get();
     if (!doc.exists) return null;
     return Shop.fromMap(doc.data()!);
+  }
+
+  /// Currently-active login sessions for a shop user, newest first. Every
+  /// doc in this subcollection represents a device that's presently logged
+  /// in — there's no inactive state to filter out.
+  Future<List<UserSession>> getUserSessions({
+    required String slug,
+    required String uid,
+  }) async {
+    final snapshot = await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .collection('sessions')
+        .orderBy('logged_in_at', descending: true)
+        .get();
+    return snapshot.docs.map((d) => UserSession.fromMap(d.data())).toList();
   }
 
   Future<List<ShopUser>> getShopUsers(String slug) async {
@@ -173,6 +192,15 @@ class ShopService {
   Future<void> setStaffDeleteEnabled(String slug, bool enabled) async {
     await _firestore.collection('shops').doc(slug).update({
       'staff_delete_enabled': enabled,
+    });
+  }
+
+  /// Max number of devices a user can be signed in on at once; the mobile
+  /// app reads this on every login and signs out the oldest session(s) once
+  /// a user exceeds it on a new device.
+  Future<void> setMaxActiveDevices(String slug, int maxActiveDevices) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'max_active_devices': maxActiveDevices,
     });
   }
 

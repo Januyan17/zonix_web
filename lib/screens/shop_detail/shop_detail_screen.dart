@@ -262,6 +262,37 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
   }
 
+  Future<void> _editMaxActiveDevices() async {
+    final result = await showDialog<int>(
+      context: context,
+      builder: (_) => MinOneValueDialog(
+        title: 'Max active devices per user',
+        description:
+            'Max number of devices a user can be signed in on at once. '
+            'Signing in on a new device beyond this limit signs out the '
+            'oldest session(s).',
+        fieldLabel: 'Max devices',
+        currentValue: _shop!.maxActiveDevices,
+      ),
+    );
+    if (result == null) return; // cancelled
+
+    try {
+      await widget.shopService.setMaxActiveDevices(widget.slug, result);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to update max active devices: ${describeError(e)}',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _editStaffLimit() async {
     final result = await showDialog<LimitResult>(
       context: context,
@@ -604,6 +635,17 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
   }
 
+  void _viewDevices(ShopUser user) {
+    showDialog(
+      context: context,
+      builder: (_) => ActiveDevicesDialog(
+        shopService: widget.shopService,
+        slug: widget.slug,
+        user: user,
+      ),
+    );
+  }
+
   Future<void> _deleteUser(ShopUser user) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -742,6 +784,16 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                                 limit: _shop!.productLimit,
                                 used: _stats?.productCount ?? 0,
                                 onEdit: _editProductLimit,
+                              ),
+                              const SizedBox(height: 10),
+                              const Divider(height: 1),
+                              const SizedBox(height: 10),
+                              SettingValueRow(
+                                icon: Icons.devices_outlined,
+                                label: 'Max devices',
+                                value:
+                                    '${_shop!.maxActiveDevices} per user',
+                                onEdit: _editMaxActiveDevices,
                               ),
                               const SizedBox(height: 10),
                               const Divider(height: 1),
@@ -911,6 +963,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                           onReissueLogin: _reissueLogin,
                           onEdit: _editUser,
                           onDelete: _deleteUser,
+                          onViewDevices: _viewDevices,
                         ),
                         const SizedBox(height: 16),
                         UserGroup(
@@ -921,6 +974,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                           onReissueLogin: _reissueLogin,
                           onEdit: _editUser,
                           onDelete: _deleteUser,
+                          onViewDevices: _viewDevices,
                         ),
                       ],
                       const SizedBox(height: 24),

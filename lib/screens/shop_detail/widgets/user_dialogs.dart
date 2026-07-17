@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/shop_user.dart';
+import '../../../models/user_session.dart';
 import '../../../services/shop_service.dart';
+import '../../../utils/date_format.dart';
+import '../../../utils/error_utils.dart';
 import '../../../widgets/credential_row.dart';
 import 'info_rows.dart';
 
@@ -371,6 +374,132 @@ class ReissueLoginDialogState extends State<ReissueLoginDialog> {
             );
           },
           child: const Text('Reissue login'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Read-only list of a user's currently-logged-in devices. A session doc
+/// existing means that device is presently active — there's no historical
+/// list to page through.
+class ActiveDevicesDialog extends StatefulWidget {
+  const ActiveDevicesDialog({
+    super.key,
+    required this.shopService,
+    required this.slug,
+    required this.user,
+  });
+
+  final ShopService shopService;
+  final String slug;
+  final ShopUser user;
+
+  @override
+  State<ActiveDevicesDialog> createState() => ActiveDevicesDialogState();
+}
+
+class ActiveDevicesDialogState extends State<ActiveDevicesDialog> {
+  late final _future = widget.shopService.getUserSessions(
+    slug: widget.slug,
+    uid: widget.user.id,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DialogHeader(
+                icon: Icons.devices_outlined,
+                title: 'Active devices',
+                subtitle: widget.user.displayName,
+              ),
+              const SizedBox(height: 20),
+              FutureBuilder<List<UserSession>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return Text(
+                      'Failed to load devices: ${describeError(snapshot.error!)}',
+                      style: TextStyle(color: colorScheme.error, fontSize: 13),
+                    );
+                  }
+                  final sessions = snapshot.data!;
+                  if (sessions.isEmpty) {
+                    return Text(
+                      'No devices currently logged in.',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
+                    );
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final s in sessions) ...[
+                        _SessionRow(session: s),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionRow extends StatelessWidget {
+  const _SessionRow({required this.session});
+
+  final UserSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(
+          Icons.smartphone_outlined,
+          size: 18,
+          color: colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            session.deviceName,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+        ),
+        Text(
+          formatRelativeDate(session.loggedInAt),
+          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
         ),
       ],
     );

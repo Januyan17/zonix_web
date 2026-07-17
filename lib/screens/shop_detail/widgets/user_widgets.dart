@@ -13,6 +13,7 @@ class UserGroup extends StatelessWidget {
     required this.onReissueLogin,
     required this.onEdit,
     required this.onDelete,
+    required this.onViewDevices,
   });
 
   final String label;
@@ -20,6 +21,7 @@ class UserGroup extends StatelessWidget {
   final ValueChanged<ShopUser> onReissueLogin;
   final ValueChanged<ShopUser> onEdit;
   final ValueChanged<ShopUser> onDelete;
+  final ValueChanged<ShopUser> onViewDevices;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +55,7 @@ class UserGroup extends StatelessWidget {
               onReissueLogin: () => onReissueLogin(u),
               onEdit: () => onEdit(u),
               onDelete: () => onDelete(u),
+              onViewDevices: () => onViewDevices(u),
             ),
             const SizedBox(height: 8),
           ],
@@ -68,12 +71,14 @@ class UserCard extends StatelessWidget {
     required this.onReissueLogin,
     required this.onEdit,
     required this.onDelete,
+    required this.onViewDevices,
   });
 
   final ShopUser user;
   final VoidCallback onReissueLogin;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onViewDevices;
 
   @override
   Widget build(BuildContext context) {
@@ -178,6 +183,8 @@ class UserCard extends StatelessWidget {
                 onEdit();
               case 'reissue':
                 onReissueLogin();
+              case 'devices':
+                onViewDevices();
               case 'delete':
                 onDelete();
             }
@@ -201,6 +208,15 @@ class UserCard extends StatelessWidget {
                   icon: Icons.lock_reset_rounded,
                   label: 'Reissue login',
                   color: menuColors.primary,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'devices',
+                height: 40,
+                child: MenuRow(
+                  icon: Icons.devices_outlined,
+                  label: 'Active devices',
+                  color: menuColors.onSurface,
                 ),
               ),
               const PopupMenuDivider(height: 8),
