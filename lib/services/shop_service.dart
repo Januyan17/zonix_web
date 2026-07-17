@@ -76,7 +76,9 @@ class ShopService {
         .map((d) => Product.fromMap(d.id, d.data()))
         .where((p) => !p.isDeleted)
         .toList();
-    products.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    products.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
     return products;
   }
 
@@ -134,29 +136,36 @@ class ShopService {
     int? stock,
     String? imageUrl,
   }) async {
-    await _firestore.collection('shops').doc(slug).collection('products').doc(id).update({
-      'name': name,
-      'description': description,
-      'category': category,
-      'sku': sku,
-      'price': price,
-      'cost': cost,
-      'stock': stock,
-      'image_url': imageUrl,
-    });
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .doc(id)
+        .update({
+          'name': name,
+          'description': description,
+          'category': category,
+          'sku': sku,
+          'price': price,
+          'cost': cost,
+          'stock': stock,
+          'image_url': imageUrl,
+        });
   }
 
-  /// Soft delete, consistent with how products are already treated
-  /// everywhere else in this schema (see [getShopStats]'s countActive,
-  /// which filters on the same is_deleted flag).
   Future<void> deleteProduct({required String slug, required String id}) async {
-    await _firestore.collection('shops').doc(slug).collection('products').doc(id).update({
-      'is_deleted': true,
-    });
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .doc(id)
+        .delete();
   }
 
   Future<void> setShopActive(String slug, bool isActive) async {
-    await _firestore.collection('shops').doc(slug).update({'is_active': isActive});
+    await _firestore.collection('shops').doc(slug).update({
+      'is_active': isActive,
+    });
   }
 
   /// [limit] null means unlimited. Enforcement of this cap happens in the
@@ -164,7 +173,9 @@ class ShopService {
   /// see the shop detail screen for the count of staff currently in use
   /// against it.
   Future<void> setStaffLimit(String slug, int? limit) async {
-    await _firestore.collection('shops').doc(slug).update({'staff_limit': limit});
+    await _firestore.collection('shops').doc(slug).update({
+      'staff_limit': limit,
+    });
   }
 
   /// [limit] null means unlimited. Enforcement of this cap happens in the
@@ -172,7 +183,9 @@ class ShopService {
   /// value; see the shop detail screen for the count of products currently
   /// in use against it.
   Future<void> setProductLimit(String slug, int? limit) async {
-    await _firestore.collection('shops').doc(slug).update({'product_limit': limit});
+    await _firestore.collection('shops').doc(slug).update({
+      'product_limit': limit,
+    });
   }
 
   /// [range] filters sales/expenses/income by their created_at date
@@ -197,10 +210,14 @@ class ShopService {
       final createdAt = raw == null ? null : DateTime.tryParse(raw);
       if (createdAt == null) return false;
       final endExclusive = range.end.add(const Duration(days: 1));
-      return !createdAt.isBefore(range.start) && createdAt.isBefore(endExclusive);
+      return !createdAt.isBefore(range.start) &&
+          createdAt.isBefore(endExclusive);
     }
 
-    double sumField(QuerySnapshot<Map<String, dynamic>> snapshot, String field) {
+    double sumField(
+      QuerySnapshot<Map<String, dynamic>> snapshot,
+      String field,
+    ) {
       var total = 0.0;
       for (final doc in snapshot.docs) {
         final data = doc.data();
@@ -219,7 +236,9 @@ class ShopService {
     }
 
     int countActive(QuerySnapshot<Map<String, dynamic>> snapshot) {
-      return snapshot.docs.where((doc) => doc.data()['is_deleted'] != true).length;
+      return snapshot.docs
+          .where((doc) => doc.data()['is_deleted'] != true)
+          .length;
     }
 
     double sumCogs(QuerySnapshot<Map<String, dynamic>> snapshot) {
@@ -258,7 +277,10 @@ class ShopService {
   /// expense, and additional-income entry in [range] (inclusive of both
   /// ends, same semantics as getShopStats), newest first. [range] null
   /// means all-time.
-  Future<List<ShopTransaction>> getShopTransactions(String slug, {StatsDateRange? range}) async {
+  Future<List<ShopTransaction>> getShopTransactions(
+    String slug, {
+    StatsDateRange? range,
+  }) async {
     final shopRef = _firestore.collection('shops').doc(slug);
     final results = await Future.wait([
       shopRef.collection('sales').get(),
@@ -272,7 +294,8 @@ class ShopService {
       final createdAt = raw == null ? null : DateTime.tryParse(raw);
       if (createdAt == null) return false;
       final endExclusive = range.end.add(const Duration(days: 1));
-      return !createdAt.isBefore(range.start) && createdAt.isBefore(endExclusive);
+      return !createdAt.isBefore(range.start) &&
+          createdAt.isBefore(endExclusive);
     }
 
     List<ShopTransaction> mapDocs(
@@ -397,6 +420,8 @@ class ShopService {
       isActive: true,
       ownerUid: ownerUid,
       createdAt: nowIso,
+      staffLimit: 1,
+      productLimit: 10,
     );
 
     final ownerUser = ShopUser(
@@ -414,13 +439,14 @@ class ShopService {
     final batch = _firestore.batch();
     batch.set(_firestore.collection('shops').doc(slug), shop.toMap());
     batch.set(
-      _firestore.collection('shops').doc(slug).collection('users').doc(ownerUid),
+      _firestore
+          .collection('shops')
+          .doc(slug)
+          .collection('users')
+          .doc(ownerUid),
       ownerUser.toMap(),
     );
-    batch.set(_shopIndex.doc(slug), {
-      'name': shopName,
-      'createdAt': nowIso,
-    });
+    batch.set(_shopIndex.doc(slug), {'name': shopName, 'createdAt': nowIso});
     await batch.commit();
 
     return ShopCreationResult(
@@ -515,8 +541,16 @@ class ShopService {
   /// their shop access (isMember/isOwner check this doc). Their Firebase
   /// Auth account itself can't be deleted from the client SDK for anyone
   /// but the signed-in user, so it's left behind, harmless and orphaned.
-  Future<void> deleteShopUser({required String slug, required String uid}) async {
-    await _firestore.collection('shops').doc(slug).collection('users').doc(uid).delete();
+  Future<void> deleteShopUser({
+    required String slug,
+    required String uid,
+  }) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .delete();
   }
 
   /// Firebase Auth passwords can never be recovered or changed by anyone

@@ -3,7 +3,8 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseStorageService {
-  SupabaseStorageService({SupabaseClient? client}) : _client = client ?? Supabase.instance.client;
+  SupabaseStorageService({SupabaseClient? client})
+    : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
@@ -19,7 +20,8 @@ class SupabaseStorageService {
     required Uint8List bytes,
     required String fileExt,
   }) async {
-    final path = '$slug/${productId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+    final path =
+        '$slug/${productId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
     await _client.storage.from(_bucket).uploadBinary(path, bytes);
     return _client.storage.from(_bucket).getPublicUrl(path);
   }

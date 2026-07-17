@@ -54,14 +54,18 @@ class AuthService {
 
     try {
       final bootstrapSnapshot = await _bootstrapRef.get();
-      debugPrint('[SIGNUP] read bootstrap: exists=${bootstrapSnapshot.exists} '
-          'data=${bootstrapSnapshot.data()}');
+      debugPrint(
+        '[SIGNUP] read bootstrap: exists=${bootstrapSnapshot.exists} '
+        'data=${bootstrapSnapshot.data()}',
+      );
       if (!bootstrapSnapshot.exists) {
         // The platform_admins create rule reads this doc's `claimed` field,
         // which throws (denying the write) if the doc doesn't exist at all.
         // Recreate it defensively rather than assuming it's always present.
         await _bootstrapRef.set({'claimed': false});
-        debugPrint('[SIGNUP] bootstrap doc was missing, recreated as claimed=false');
+        debugPrint(
+          '[SIGNUP] bootstrap doc was missing, recreated as claimed=false',
+        );
       }
       final claimed = bootstrapSnapshot.data()?['claimed'] as bool? ?? false;
       if (claimed) {
@@ -92,7 +96,10 @@ class AuthService {
       password: password,
     );
     final user = credential.user!;
-    final adminDoc = await _firestore.collection('platform_admins').doc(user.uid).get();
+    final adminDoc = await _firestore
+        .collection('platform_admins')
+        .doc(user.uid)
+        .get();
     if (!adminDoc.exists) {
       await _auth.signOut();
       throw const NotAnAdminException();

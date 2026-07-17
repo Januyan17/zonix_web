@@ -59,14 +59,21 @@ class Product {
   factory Product.fromMap(String id, Map<String, dynamic> map) {
     return Product(
       id: id,
-      name: _pickString(map, ['name', 'title', 'product_name']) ?? 'Untitled product',
+      name:
+          _pickString(map, ['name', 'title', 'product_name']) ??
+          'Untitled product',
       description: _pickString(map, ['description', 'desc', 'details']),
       category: _pickString(map, ['category', 'category_name', 'type']),
       sku: _pickString(map, ['sku', 'code', 'product_code']),
       price: _pickDouble(map, ['price', 'selling_price', 'unit_price']),
       cost: _pickDouble(map, ['cost', 'unit_cost', 'cost_price']),
       stock: _pickInt(map, ['stock', 'quantity', 'stock_quantity', 'qty']),
-      imageUrl: _pickString(map, ['image_url', 'imageUrl', 'photo_url', 'image']),
+      imageUrl: _pickString(map, [
+        'image_url',
+        'imageUrl',
+        'photo_url',
+        'image',
+      ]),
       isDeleted: map['is_deleted'] == true,
       createdAt: _pickString(map, ['created_at']),
     );

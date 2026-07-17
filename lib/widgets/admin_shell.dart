@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/auth_gate.dart';
 import '../services/auth_service.dart';
 import '../services/shop_service.dart';
+import '../theme/app_dimens.dart';
 import 'zonix_badge.dart';
 
 const double _wideBreakpoint = 900;
@@ -31,7 +32,8 @@ class AdminShell extends StatelessWidget {
     if (context.mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (_) => AuthGate(authService: authService, shopService: shopService),
+          builder: (_) =>
+              AuthGate(authService: authService, shopService: shopService),
         ),
         (route) => false,
       );
@@ -62,7 +64,7 @@ class AdminShell extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: const [
                 ZonixBadge(size: 28),
-                SizedBox(width: 10),
+                SizedBox(width: AppDimens.spacing10),
                 Flexible(
                   child: Text('Zonix Admin', overflow: TextOverflow.ellipsis),
                 ),
@@ -94,7 +96,9 @@ class _SideNav extends StatelessWidget {
     return Container(
       width: extended ? 240 : 84,
       color: colorScheme.surfaceContainerLow,
-      child: SafeArea(child: _NavContent(extended: extended, onLogout: onLogout)),
+      child: SafeArea(
+        child: _NavContent(extended: extended, onLogout: onLogout),
+      ),
     );
   }
 }
@@ -111,11 +115,16 @@ class _NavContent extends StatelessWidget {
 
     final brandRow = extended
         ? const Padding(
-            padding: EdgeInsets.fromLTRB(20, 24, 20, 24),
+            padding: EdgeInsets.fromLTRB(
+              AppDimens.spacing20,
+              AppDimens.spacing24,
+              AppDimens.spacing20,
+              AppDimens.spacing24,
+            ),
             child: Row(
               children: [
                 ZonixBadge(size: 34),
-                SizedBox(width: 12),
+                SizedBox(width: AppDimens.spacing12),
                 Expanded(
                   child: Text(
                     'Zonix Admin',
@@ -127,7 +136,7 @@ class _NavContent extends StatelessWidget {
             ),
           )
         : const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+            padding: EdgeInsets.symmetric(vertical: AppDimens.spacing24),
             child: Center(child: ZonixBadge(size: 34)),
           );
 
@@ -139,7 +148,7 @@ class _NavContent extends StatelessWidget {
     );
 
     final logoutItem = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.spacing12),
       child: _NavItem(
         icon: Icons.logout_rounded,
         label: 'Log out',
@@ -182,28 +191,48 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final fg = color ?? (selected ? colorScheme.primary : colorScheme.onSurfaceVariant);
-    final bg = selected ? colorScheme.primaryContainer.withValues(alpha: 0.6) : Colors.transparent;
+    final fg =
+        color ??
+        (selected ? colorScheme.primary : colorScheme.onSurfaceVariant);
+    final bg = selected
+        ? colorScheme.primaryContainer.withValues(alpha: 0.6)
+        : Colors.transparent;
 
     final content = Container(
-      margin: EdgeInsets.symmetric(horizontal: extended ? 12 : 16, vertical: 3),
-      padding: EdgeInsets.symmetric(horizontal: extended ? 14 : 0, vertical: 12),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.symmetric(
+        horizontal: extended ? AppDimens.spacing12 : AppDimens.spacing16,
+        vertical: 3,
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: extended ? AppDimens.spacing14 : 0,
+        vertical: AppDimens.spacing12,
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppDimens.radiusLarge),
+      ),
       child: extended
           ? Row(
               children: [
-                Icon(icon, size: 20, color: fg),
-                const SizedBox(width: 12),
-                Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 13.5)),
+                Icon(icon, size: AppDimens.iconXl, color: fg),
+                const SizedBox(width: AppDimens.spacing12),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: fg,
+                    fontWeight: FontWeight.w600,
+                    fontSize: AppDimens.fontBodyLg,
+                  ),
+                ),
               ],
             )
-          : Icon(icon, size: 22, color: fg),
+          : Icon(icon, size: AppDimens.iconXxl, color: fg),
     );
 
     return Tooltip(
       message: extended ? '' : label,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppDimens.radiusLarge),
         onTap: onTap,
         child: content,
       ),

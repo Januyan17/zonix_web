@@ -28,11 +28,16 @@ class ShopStats {
 
   double get grossProfit => totalRevenue - totalCogs;
 
-  double get netProfit => totalRevenue - totalCogs - totalExpenses + totalAdditionalIncome;
+  double get netProfit =>
+      totalRevenue - totalCogs - totalExpenses + totalAdditionalIncome;
 }
 
 class DailyStat {
-  const DailyStat({required this.day, required this.revenue, required this.expenses});
+  const DailyStat({
+    required this.day,
+    required this.revenue,
+    required this.expenses,
+  });
 
   final DateTime day;
   final double revenue;

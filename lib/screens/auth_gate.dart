@@ -54,11 +54,20 @@ class _AuthGateState extends State<AuthGate> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (widget.authService.currentUser != null) {
-      return ShopListScreen(authService: widget.authService, shopService: widget.shopService);
+      return ShopListScreen(
+        authService: widget.authService,
+        shopService: widget.shopService,
+      );
     }
     if (!_claimed) {
-      return SignupScreen(authService: widget.authService, shopService: widget.shopService);
+      return SignupScreen(
+        authService: widget.authService,
+        shopService: widget.shopService,
+      );
     }
-    return LoginScreen(authService: widget.authService, shopService: widget.shopService);
+    return LoginScreen(
+      authService: widget.authService,
+      shopService: widget.shopService,
+    );
   }
 }

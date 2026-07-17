@@ -4,13 +4,18 @@ import 'package:flutter/material.dart';
 import '../models/shop.dart';
 import '../services/auth_service.dart';
 import '../services/shop_service.dart';
+import '../theme/app_dimens.dart';
 import '../utils/avatar_color.dart';
 import '../widgets/admin_shell.dart';
 import 'create_shop_screen.dart';
-import 'shop_detail_screen.dart';
+import 'shop_detail/shop_detail_screen.dart';
 
 class _ShopEntry {
-  const _ShopEntry({required this.slug, required this.indexedName, required this.shop});
+  const _ShopEntry({
+    required this.slug,
+    required this.indexedName,
+    required this.shop,
+  });
 
   final String slug;
   final String indexedName;
@@ -67,7 +72,8 @@ class ShopListScreen extends StatelessWidget {
                 for (var i = 0; i < docs.length; i++)
                   _ShopEntry(
                     slug: docs[i].id,
-                    indexedName: docs[i].data()['name'] as String? ?? docs[i].id,
+                    indexedName:
+                        docs[i].data()['name'] as String? ?? docs[i].id,
                     shop: shops?[i],
                   ),
               ];
@@ -80,26 +86,38 @@ class ShopListScreen extends StatelessWidget {
                     return CustomScrollView(
                       slivers: [
                         SliverToBoxAdapter(
-                          child: _SummaryRow(entries: entries, loading: shops == null),
+                          child: _SummaryRow(
+                            entries: entries,
+                            loading: shops == null,
+                          ),
                         ),
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(0, 24, 0, 12),
+                            padding: const EdgeInsets.fromLTRB(
+                              0,
+                              AppDimens.spacing24,
+                              0,
+                              AppDimens.spacing12,
+                            ),
                             child: Text(
                               '${entries.length} shop${entries.length == 1 ? '' : 's'}',
-                              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                             ),
                           ),
                         ),
                         SliverGrid(
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: columns,
-                            mainAxisExtent: 82,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
-                          ),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                mainAxisExtent: 82,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                              ),
                           delegate: SliverChildBuilderDelegate(
                             (context, index) => _ShopTile(
                               entry: entries[index],
@@ -135,7 +153,12 @@ class _DashboardScaffold extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1400),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          padding: const EdgeInsets.fromLTRB(
+            AppDimens.spacing16,
+            AppDimens.spacing16,
+            AppDimens.spacing16,
+            0,
+          ),
           child: child,
         ),
       ),
@@ -154,7 +177,9 @@ class _SummaryRow extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final total = entries.length;
     final active = entries.where((e) => e.shop?.isActive == true).length;
-    final inactive = entries.where((e) => e.shop != null && e.shop!.isActive == false).length;
+    final inactive = entries
+        .where((e) => e.shop != null && e.shop!.isActive == false)
+        .length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -186,7 +211,10 @@ class _SummaryRow extends StatelessWidget {
         if (narrow) {
           return Column(
             children: [
-              for (final t in tiles) ...[t, const SizedBox(height: 10)],
+              for (final t in tiles) ...[
+                t,
+                const SizedBox(height: AppDimens.spacing10),
+              ],
             ],
           );
         }
@@ -194,7 +222,8 @@ class _SummaryRow extends StatelessWidget {
           children: [
             for (var i = 0; i < tiles.length; i++) ...[
               Expanded(child: tiles[i]),
-              if (i != tiles.length - 1) const SizedBox(width: 10),
+              if (i != tiles.length - 1)
+                const SizedBox(width: AppDimens.spacing10),
             ],
           ],
         );
@@ -223,7 +252,7 @@ class _SummaryTile extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppDimens.spacing16),
         child: Row(
           children: [
             Container(
@@ -234,14 +263,26 @@ class _SummaryTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(11),
               ),
               alignment: Alignment.center,
-              child: Icon(icon, size: 20, color: color),
+              child: Icon(icon, size: AppDimens.iconXl, color: color),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: AppDimens.spacing14),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-                Text(label, style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: AppDimens.fontLabelLg,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ],
@@ -270,19 +311,26 @@ class _EmptyState extends StatelessWidget {
               height: 64,
               decoration: BoxDecoration(
                 color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(AppDimens.radiusSheetTop),
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.storefront_outlined, color: colorScheme.onPrimaryContainer, size: 30),
+              child: Icon(
+                Icons.storefront_outlined,
+                color: colorScheme.onPrimaryContainer,
+                size: 30,
+              ),
             ),
-            const SizedBox(height: 16),
-            Text('No shops yet', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppDimens.spacing16),
+            Text(
+              'No shops yet',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppDimens.spacing6),
             Text(
               'Create your first shop to get started.',
               style: TextStyle(color: colorScheme.onSurfaceVariant),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: AppDimens.spacing20),
             FilledButton.icon(
               onPressed: () {
                 Navigator.of(context).push(
@@ -320,12 +368,16 @@ class _ShopTile extends StatelessWidget {
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => ShopDetailScreen(slug: entry.slug, shopService: shopService),
+              builder: (_) =>
+                  ShopDetailScreen(slug: entry.slug, shopService: shopService),
             ),
           );
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimens.spacing16,
+            vertical: AppDimens.spacing14,
+          ),
           child: Row(
             children: [
               CircleAvatar(
@@ -337,7 +389,7 @@ class _ShopTile extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: AppDimens.spacing14),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -347,22 +399,30 @@ class _ShopTile extends StatelessWidget {
                       shop?.name ?? name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: AppDimens.spacing2),
                     Text(
                       entry.slug,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13),
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: AppDimens.fontBody,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppDimens.spacing8),
               _StatusChip(shop: shop),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: AppDimens.spacing4),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),
@@ -391,7 +451,7 @@ class _StatusChip extends StatelessWidget {
     return Chip(
       avatar: Icon(
         active ? Icons.check_circle : Icons.pause_circle_outline,
-        size: 16,
+        size: AppDimens.iconSm,
         color: active ? colorScheme.tertiary : colorScheme.onSurfaceVariant,
       ),
       label: Text(active ? 'Active' : 'Inactive'),
@@ -399,7 +459,9 @@ class _StatusChip extends StatelessWidget {
           ? colorScheme.tertiaryContainer.withValues(alpha: 0.6)
           : colorScheme.surfaceContainerHighest,
       labelStyle: TextStyle(
-        color: active ? colorScheme.onTertiaryContainer : colorScheme.onSurfaceVariant,
+        color: active
+            ? colorScheme.onTertiaryContainer
+            : colorScheme.onSurfaceVariant,
       ),
     );
   }
