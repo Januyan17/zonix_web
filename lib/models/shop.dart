@@ -14,6 +14,10 @@ class Shop {
   /// mobile app. Null means unlimited.
   final int? productLimit;
 
+  /// Whether the mobile/POS app shows a "Delete" option for staff members.
+  /// Defaults to false when unset on the document.
+  final bool staffDeleteEnabled;
+
   const Shop({
     required this.id,
     required this.name,
@@ -23,6 +27,7 @@ class Shop {
     required this.createdAt,
     this.staffLimit,
     this.productLimit,
+    this.staffDeleteEnabled = false,
   });
 
   factory Shop.fromMap(Map<String, dynamic> map) {
@@ -35,6 +40,7 @@ class Shop {
       createdAt: map['created_at'] as String,
       staffLimit: (map['staff_limit'] as num?)?.toInt(),
       productLimit: (map['product_limit'] as num?)?.toInt(),
+      staffDeleteEnabled: map['staff_delete_enabled'] as bool? ?? false,
     );
   }
 
@@ -48,6 +54,7 @@ class Shop {
       'created_at': createdAt,
       'staff_limit': staffLimit,
       'product_limit': productLimit,
+      'staff_delete_enabled': staffDeleteEnabled,
     };
   }
 }

@@ -49,6 +49,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   bool _seriesLoading = true;
   bool _productsLoading = true;
   bool _togglingActive = false;
+  bool _togglingStaffDelete = false;
   bool _showProducts = false;
   bool _showTransactions = false;
   String? _error;
@@ -242,6 +243,22 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _togglingActive = false);
+    }
+  }
+
+  Future<void> _toggleStaffDelete(bool newValue) async {
+    setState(() => _togglingStaffDelete = true);
+    try {
+      await widget.shopService.setStaffDeleteEnabled(widget.slug, newValue);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update: ${describeError(e)}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _togglingStaffDelete = false);
     }
   }
 
@@ -738,6 +755,19 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                                 onChanged: _togglingActive
                                     ? null
                                     : (v) => _toggleActive(v),
+                              ),
+                              const Divider(height: 1),
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text('Allow staff deletion'),
+                                subtitle: const Text(
+                                  'Shows a Delete option for staff members '
+                                  'in the mobile app',
+                                ),
+                                value: _shop!.staffDeleteEnabled,
+                                onChanged: _togglingStaffDelete
+                                    ? null
+                                    : (v) => _toggleStaffDelete(v),
                               ),
                             ],
                           ),

@@ -168,6 +168,14 @@ class ShopService {
     });
   }
 
+  /// Controls whether the mobile/POS app shows a "Delete" option for staff
+  /// members. Defaults to false/off when unset on the shop document.
+  Future<void> setStaffDeleteEnabled(String slug, bool enabled) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'staff_delete_enabled': enabled,
+    });
+  }
+
   /// [limit] null means unlimited. Enforcement of this cap happens in the
   /// mobile app when an owner creates staff — this just stores the value;
   /// see the shop detail screen for the count of staff currently in use
