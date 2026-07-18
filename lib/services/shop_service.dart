@@ -74,6 +74,23 @@ class ShopService {
     return snapshot.docs.map((d) => UserSession.fromMap(d.data())).toList();
   }
 
+  /// Force-logs-out a single device: the mobile app listens to its own
+  /// session doc in real time and signs out immediately once it's deleted.
+  Future<void> deleteUserSession({
+    required String slug,
+    required String uid,
+    required String deviceId,
+  }) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .collection('sessions')
+        .doc(deviceId)
+        .delete();
+  }
+
   Future<List<ShopUser>> getShopUsers(String slug) async {
     final snapshot = await _firestore
         .collection('shops')
@@ -195,12 +212,17 @@ class ShopService {
     });
   }
 
-  /// Max number of devices a user can be signed in on at once; the mobile
-  /// app reads this on every login and signs out the oldest session(s) once
-  /// a user exceeds it on a new device.
-  Future<void> setMaxActiveDevices(String slug, int maxActiveDevices) async {
+  /// Max number of devices staff/owner accounts can be signed in on at
+  /// once; the mobile app watches this doc live and signs out the oldest
+  /// session(s) for an affected account as soon as it's exceeded.
+  Future<void> setMaxActiveDevices(
+    String slug, {
+    required int staff,
+    required int owner,
+  }) async {
     await _firestore.collection('shops').doc(slug).update({
-      'max_active_devices': maxActiveDevices,
+      'max_active_devices_staff': staff,
+      'max_active_devices_owner': owner,
     });
   }
 
@@ -466,7 +488,9 @@ class ShopService {
       displayName: ownerDisplayName,
       email: email,
       role: 'owner',
-      isEnabled: true,
+      // New shops start disabled and need platform-admin approval (via the
+      // Enabled toggle) before the owner can sign in.
+      isEnabled: false,
       createdAt: nowIso,
       updatedAt: nowIso,
       isDeleted: false,

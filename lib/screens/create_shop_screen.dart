@@ -313,8 +313,9 @@ class _SuccessView extends StatelessWidget {
                       ),
                       const SizedBox(height: AppDimens.spacing8),
                       Text(
-                        'Relay these credentials to the shop owner so they can log '
-                        'into the mobile app:',
+                        'The owner account starts disabled — enable it from the '
+                        'shop\'s user list before relaying these credentials so '
+                        'they can log into the mobile app:',
                         style: TextStyle(color: colorScheme.onSurfaceVariant),
                         textAlign: TextAlign.center,
                       ),

@@ -54,7 +54,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   bool _showTransactions = false;
   String? _error;
 
-  _DateFilter _filter = _DateFilter.allTime;
+  _DateFilter _filter = _DateFilter.day;
   DateTimeRange? _customRange;
 
   @override
@@ -263,22 +263,21 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   }
 
   Future<void> _editMaxActiveDevices() async {
-    final result = await showDialog<int>(
+    final result = await showDialog<MaxDevicesResult>(
       context: context,
-      builder: (_) => MinOneValueDialog(
-        title: 'Max active devices per user',
-        description:
-            'Max number of devices a user can be signed in on at once. '
-            'Signing in on a new device beyond this limit signs out the '
-            'oldest session(s).',
-        fieldLabel: 'Max devices',
-        currentValue: _shop!.maxActiveDevices,
+      builder: (_) => MaxDevicesDialog(
+        currentStaff: _shop!.maxActiveDevicesStaff,
+        currentOwner: _shop!.maxActiveDevicesOwner,
       ),
     );
     if (result == null) return; // cancelled
 
     try {
-      await widget.shopService.setMaxActiveDevices(widget.slug, result);
+      await widget.shopService.setMaxActiveDevices(
+        widget.slug,
+        staff: result.staff,
+        owner: result.owner,
+      );
       await _load();
     } catch (e) {
       if (mounted) {
@@ -642,6 +641,9 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
         shopService: widget.shopService,
         slug: widget.slug,
         user: user,
+        maxActiveDevices: user.role == 'owner'
+            ? _shop!.maxActiveDevicesOwner
+            : _shop!.maxActiveDevicesStaff,
       ),
     );
   }
@@ -790,9 +792,19 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                               const SizedBox(height: 10),
                               SettingValueRow(
                                 icon: Icons.devices_outlined,
-                                label: 'Max devices',
+                                label: 'Max devices — Staff',
                                 value:
-                                    '${_shop!.maxActiveDevices} per user',
+                                    '${_shop!.maxActiveDevicesStaff} per user',
+                                onEdit: _editMaxActiveDevices,
+                              ),
+                              const SizedBox(height: 10),
+                              const Divider(height: 1),
+                              const SizedBox(height: 10),
+                              SettingValueRow(
+                                icon: Icons.admin_panel_settings_outlined,
+                                label: 'Max devices — Owner/Admin',
+                                value:
+                                    '${_shop!.maxActiveDevicesOwner} per user',
                                 onEdit: _editMaxActiveDevices,
                               ),
                               const SizedBox(height: 10),

@@ -6,6 +6,7 @@ import '../../../services/shop_service.dart';
 import '../../../utils/date_format.dart';
 import '../../../utils/error_utils.dart';
 import '../../../widgets/credential_row.dart';
+import 'delete_dialogs.dart';
 import 'info_rows.dart';
 
 class AddUserRequest {
@@ -380,30 +381,95 @@ class ReissueLoginDialogState extends State<ReissueLoginDialog> {
   }
 }
 
-/// Read-only list of a user's currently-logged-in devices. A session doc
-/// existing means that device is presently active — there's no historical
-/// list to page through.
+/// List of a user's currently-logged-in devices, each with a "Logout"
+/// button. A session doc existing means that device is presently active —
+/// there's no historical list to page through. Logging out a device just
+/// deletes its session doc; the mobile app listens to that doc in real
+/// time and force-signs-out immediately once it's gone.
 class ActiveDevicesDialog extends StatefulWidget {
   const ActiveDevicesDialog({
     super.key,
     required this.shopService,
     required this.slug,
     required this.user,
+    required this.maxActiveDevices,
   });
 
   final ShopService shopService;
   final String slug;
   final ShopUser user;
 
+  /// The shop's configured cap for this user's role (max_active_devices_staff
+  /// or _owner), shown here for context — editing it happens on the shop
+  /// settings panel, not this dialog.
+  final int maxActiveDevices;
+
   @override
   State<ActiveDevicesDialog> createState() => ActiveDevicesDialogState();
 }
 
 class ActiveDevicesDialogState extends State<ActiveDevicesDialog> {
-  late final _future = widget.shopService.getUserSessions(
-    slug: widget.slug,
-    uid: widget.user.id,
-  );
+  bool _loading = true;
+  Object? _error;
+  List<UserSession> _sessions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final sessions = await widget.shopService.getUserSessions(
+        slug: widget.slug,
+        uid: widget.user.id,
+      );
+      if (mounted) setState(() => _sessions = sessions);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _logout(UserSession session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => DeleteConfirmDialog(
+        title: 'Log out this device?',
+        message:
+            '"${session.deviceName}" will be signed out immediately. '
+            'They can sign back in as long as they\'re under the device limit.',
+        confirmLabel: 'Log out',
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await widget.shopService.deleteUserSession(
+        slug: widget.slug,
+        uid: widget.user.id,
+        deviceId: session.deviceId,
+      );
+      if (mounted) {
+        setState(
+          () => _sessions = _sessions
+              .where((s) => s.deviceId != session.deviceId)
+              .toList(),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to log out device: ${describeError(e)}'),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -422,43 +488,44 @@ class ActiveDevicesDialogState extends State<ActiveDevicesDialog> {
                 title: 'Active devices',
                 subtitle: widget.user.displayName,
               ),
-              const SizedBox(height: 20),
-              FutureBuilder<List<UserSession>>(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-                  if (snapshot.hasError) {
-                    return Text(
-                      'Failed to load devices: ${describeError(snapshot.error!)}',
-                      style: TextStyle(color: colorScheme.error, fontSize: 13),
-                    );
-                  }
-                  final sessions = snapshot.data!;
-                  if (sessions.isEmpty) {
-                    return Text(
-                      'No devices currently logged in.',
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    );
-                  }
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final s in sessions) ...[
-                        _SessionRow(session: s),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  );
-                },
+              const SizedBox(height: 8),
+              Text(
+                'Device limit: ${widget.maxActiveDevices} '
+                '(${widget.user.role == 'owner' ? 'owner/admin' : 'staff'})',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
+              const SizedBox(height: 16),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_error != null)
+                Text(
+                  'Failed to load devices: ${describeError(_error!)}',
+                  style: TextStyle(color: colorScheme.error, fontSize: 13),
+                )
+              else if (_sessions.isEmpty)
+                Text(
+                  'No devices currently logged in.',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                )
+              else
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final s in _sessions) ...[
+                      _SessionRow(session: s, onLogout: () => _logout(s)),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                ),
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerRight,
@@ -476,9 +543,10 @@ class ActiveDevicesDialogState extends State<ActiveDevicesDialog> {
 }
 
 class _SessionRow extends StatelessWidget {
-  const _SessionRow({required this.session});
+  const _SessionRow({required this.session, required this.onLogout});
 
   final UserSession session;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -492,14 +560,34 @@ class _SessionRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            session.deviceName,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                session.deviceName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              Text(
+                formatRelativeDate(session.loggedInAt),
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
         ),
-        Text(
-          formatRelativeDate(session.loggedInAt),
-          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+        TextButton(
+          onPressed: onLogout,
+          style: TextButton.styleFrom(
+            foregroundColor: colorScheme.error,
+            minimumSize: const Size(40, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+          ),
+          child: const Text('Logout'),
         ),
       ],
     );

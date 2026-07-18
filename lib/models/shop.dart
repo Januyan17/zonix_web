@@ -18,10 +18,14 @@ class Shop {
   /// Defaults to false when unset on the document.
   final bool staffDeleteEnabled;
 
-  /// Max number of devices a user can be signed in on at once; the mobile
-  /// app signs out the oldest session(s) once this is exceeded on a new
-  /// device. Defaults to 1 when unset on the document.
-  final int maxActiveDevices;
+  /// Max number of devices a staff (non-owner) account can be signed in on
+  /// at once; the mobile app signs out the oldest session(s) once this is
+  /// exceeded on a new device. Defaults to 1 when unset on the document.
+  final int maxActiveDevicesStaff;
+
+  /// Same as [maxActiveDevicesStaff] but for the owner/admin account only.
+  /// Defaults to 1 when unset on the document.
+  final int maxActiveDevicesOwner;
 
   const Shop({
     required this.id,
@@ -33,7 +37,8 @@ class Shop {
     this.staffLimit,
     this.productLimit,
     this.staffDeleteEnabled = false,
-    this.maxActiveDevices = 1,
+    this.maxActiveDevicesStaff = 1,
+    this.maxActiveDevicesOwner = 1,
   });
 
   factory Shop.fromMap(Map<String, dynamic> map) {
@@ -47,7 +52,10 @@ class Shop {
       staffLimit: (map['staff_limit'] as num?)?.toInt(),
       productLimit: (map['product_limit'] as num?)?.toInt(),
       staffDeleteEnabled: map['staff_delete_enabled'] as bool? ?? false,
-      maxActiveDevices: (map['max_active_devices'] as num?)?.toInt() ?? 1,
+      maxActiveDevicesStaff:
+          (map['max_active_devices_staff'] as num?)?.toInt() ?? 1,
+      maxActiveDevicesOwner:
+          (map['max_active_devices_owner'] as num?)?.toInt() ?? 1,
     );
   }
 
@@ -62,7 +70,8 @@ class Shop {
       'staff_limit': staffLimit,
       'product_limit': productLimit,
       'staff_delete_enabled': staffDeleteEnabled,
-      'max_active_devices': maxActiveDevices,
+      'max_active_devices_staff': maxActiveDevicesStaff,
+      'max_active_devices_owner': maxActiveDevicesOwner,
     };
   }
 }
