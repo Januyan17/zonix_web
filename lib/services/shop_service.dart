@@ -246,6 +246,30 @@ class ShopService {
     });
   }
 
+  /// Writes all five shop-link fields at once. A cleared input must arrive
+  /// here as null, not as an empty string: the mobile app treats any
+  /// non-empty value as a link and would keep printing a QR code for it on
+  /// every receipt. Nulls are written explicitly rather than omitted so the
+  /// stale value on the document is actually overwritten. Values are stored
+  /// raw (the handle or address as typed) — the URL each one resolves to is
+  /// derived at print time by the mobile app, never stored.
+  Future<void> setShopLinks(
+    String slug, {
+    required String? website,
+    required String? facebook,
+    required String? instagram,
+    required String? tiktok,
+    required bool linksEnabled,
+  }) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'website': website,
+      'facebook': facebook,
+      'instagram': instagram,
+      'tiktok': tiktok,
+      'shop_links_enabled': linksEnabled,
+    });
+  }
+
   /// [range] filters sales/expenses/income by their created_at date
   /// (inclusive of both ends); product count is always all-time since it's
   /// a catalog size, not an activity metric. Filtering happens client-side
@@ -480,6 +504,9 @@ class ShopService {
       createdAt: nowIso,
       staffLimit: 1,
       productLimit: 10,
+      // New shops start with no links, and with the owner locked out of
+      // editing them from the mobile app until an admin opts them in.
+      shopLinksEnabled: false,
     );
 
     final ownerUser = ShopUser(

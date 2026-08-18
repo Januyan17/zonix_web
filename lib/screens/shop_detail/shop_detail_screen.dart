@@ -15,6 +15,7 @@ import 'widgets/info_rows.dart';
 import 'widgets/limit_row_and_dialog.dart';
 import 'widgets/product_dialogs.dart';
 import 'widgets/product_widgets.dart';
+import 'widgets/shop_links_section.dart';
 import 'widgets/stat_widgets.dart';
 import 'widgets/transactions_modal.dart';
 import 'widgets/user_dialogs.dart';
@@ -51,6 +52,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   bool _togglingActive = false;
   bool _togglingStaffDelete = false;
   bool _showProducts = false;
+  bool _showShopLinks = false;
   bool _showTransactions = false;
   String? _error;
 
@@ -345,6 +347,34 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
               'Failed to update product limit: ${describeError(e)}',
             ),
           ),
+        );
+      }
+    }
+  }
+
+  /// Writes the four link values and the owner-editable switch in one go.
+  /// The mobile app watches this document live, so the receipt QR codes
+  /// change over on every device within seconds of this returning.
+  Future<void> _saveShopLinks(ShopLinksResult links) async {
+    try {
+      await widget.shopService.setShopLinks(
+        widget.slug,
+        website: links.website,
+        facebook: links.facebook,
+        instagram: links.instagram,
+        tiktok: links.tiktok,
+        linksEnabled: links.linksEnabled,
+      );
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Shop links saved')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save links: ${describeError(e)}')),
         );
       }
     }
@@ -837,6 +867,32 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.qr_code_2_outlined,
+                            size: 18,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Shop Links',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const Spacer(),
+                          Switch(
+                            value: _showShopLinks,
+                            onChanged: (v) =>
+                                setState(() => _showShopLinks = v),
+                          ),
+                        ],
+                      ),
+                      if (_showShopLinks) ...[
+                        const SizedBox(height: 10),
+                        ShopLinksSection(shop: _shop!, onSave: _saveShopLinks),
+                      ],
                       const SizedBox(height: 24),
                       Row(
                         children: [

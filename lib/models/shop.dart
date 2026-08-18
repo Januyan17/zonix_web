@@ -27,6 +27,22 @@ class Shop {
   /// Defaults to 1 when unset on the document.
   final int maxActiveDevicesOwner;
 
+  /// Full site address, scheme optional. Null when the shop has no website.
+  final String? website;
+
+  /// Facebook profile name, e.g. "zonixpos" — not a URL, though a pasted URL
+  /// is accepted too. Same for [instagram] and [tiktok].
+  final String? facebook;
+
+  final String? instagram;
+
+  final String? tiktok;
+
+  /// Whether the shop owner may edit the four link fields above from the
+  /// mobile app. Defaults to false when unset on the document; only a
+  /// platform admin can ever change it.
+  final bool shopLinksEnabled;
+
   const Shop({
     required this.id,
     required this.name,
@@ -39,6 +55,11 @@ class Shop {
     this.staffDeleteEnabled = false,
     this.maxActiveDevicesStaff = 1,
     this.maxActiveDevicesOwner = 1,
+    this.website,
+    this.facebook,
+    this.instagram,
+    this.tiktok,
+    this.shopLinksEnabled = false,
   });
 
   factory Shop.fromMap(Map<String, dynamic> map) {
@@ -56,6 +77,11 @@ class Shop {
           (map['max_active_devices_staff'] as num?)?.toInt() ?? 1,
       maxActiveDevicesOwner:
           (map['max_active_devices_owner'] as num?)?.toInt() ?? 1,
+      website: map['website'] as String?,
+      facebook: map['facebook'] as String?,
+      instagram: map['instagram'] as String?,
+      tiktok: map['tiktok'] as String?,
+      shopLinksEnabled: map['shop_links_enabled'] as bool? ?? false,
     );
   }
 
@@ -72,6 +98,11 @@ class Shop {
       'staff_delete_enabled': staffDeleteEnabled,
       'max_active_devices_staff': maxActiveDevicesStaff,
       'max_active_devices_owner': maxActiveDevicesOwner,
+      'website': website,
+      'facebook': facebook,
+      'instagram': instagram,
+      'tiktok': tiktok,
+      'shop_links_enabled': shopLinksEnabled,
     };
   }
 }
