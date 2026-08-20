@@ -37,6 +37,7 @@ class ShopListScreen extends StatelessWidget {
     return AdminShell(
       authService: authService,
       shopService: shopService,
+      current: AdminPage.shops,
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),
         label: const Text('Create shop'),

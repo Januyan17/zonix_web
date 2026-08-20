@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../screens/app_version_screen.dart';
 import '../screens/auth_gate.dart';
+import '../screens/shop_list_screen.dart';
 import '../services/auth_service.dart';
 import '../services/shop_service.dart';
 import '../theme/app_dimens.dart';
@@ -8,6 +10,11 @@ import 'zonix_badge.dart';
 
 const double _wideBreakpoint = 900;
 const double _railExtendedBreakpoint = 1200;
+
+/// The top-level pages the nav rail switches between. Each one wraps itself
+/// in an [AdminShell] and names itself here, so the rail highlights the
+/// right entry without the shell having to inspect the route.
+enum AdminPage { shops, appVersion }
 
 /// Responsive admin dashboard frame: a persistent side nav rail on wide
 /// screens, a drawer + app bar on narrow/mobile screens. Wraps the
@@ -18,12 +25,14 @@ class AdminShell extends StatelessWidget {
     super.key,
     required this.authService,
     required this.shopService,
+    required this.current,
     required this.body,
     this.floatingActionButton,
   });
 
   final AuthService authService;
   final ShopService shopService;
+  final AdminPage current;
   final Widget body;
   final Widget? floatingActionButton;
 
@@ -40,6 +49,28 @@ class AdminShell extends StatelessWidget {
     }
   }
 
+  /// Switches between top-level pages with pushReplacement rather than
+  /// push, so hopping between Shops and App version doesn't build a stack
+  /// of shells behind the current one. Sub-pages (create/detail) are still
+  /// pushed on top and keep their back button.
+  void _navigate(BuildContext context, AdminPage target) {
+    if (target == current) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => switch (target) {
+          AdminPage.shops => ShopListScreen(
+            authService: authService,
+            shopService: shopService,
+          ),
+          AdminPage.appVersion => AppVersionScreen(
+            authService: authService,
+            shopService: shopService,
+          ),
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -50,7 +81,12 @@ class AdminShell extends StatelessWidget {
           return Scaffold(
             body: Row(
               children: [
-                _SideNav(extended: extended, onLogout: () => _logout(context)),
+                _SideNav(
+                  extended: extended,
+                  current: current,
+                  onNavigate: (page) => _navigate(context, page),
+                  onLogout: () => _logout(context),
+                ),
                 const VerticalDivider(width: 1),
                 Expanded(child: body),
               ],
@@ -73,7 +109,11 @@ class AdminShell extends StatelessWidget {
           ),
           drawer: Drawer(
             child: SafeArea(
-              child: _NavContent(onLogout: () => _logout(context)),
+              child: _NavContent(
+                current: current,
+                onNavigate: (page) => _navigate(context, page),
+                onLogout: () => _logout(context),
+              ),
             ),
           ),
           body: body,
@@ -85,9 +125,16 @@ class AdminShell extends StatelessWidget {
 }
 
 class _SideNav extends StatelessWidget {
-  const _SideNav({required this.extended, required this.onLogout});
+  const _SideNav({
+    required this.extended,
+    required this.current,
+    required this.onNavigate,
+    required this.onLogout,
+  });
 
   final bool extended;
+  final AdminPage current;
+  final ValueChanged<AdminPage> onNavigate;
   final VoidCallback onLogout;
 
   @override
@@ -97,16 +144,28 @@ class _SideNav extends StatelessWidget {
       width: extended ? 240 : 84,
       color: colorScheme.surfaceContainerLow,
       child: SafeArea(
-        child: _NavContent(extended: extended, onLogout: onLogout),
+        child: _NavContent(
+          extended: extended,
+          current: current,
+          onNavigate: onNavigate,
+          onLogout: onLogout,
+        ),
       ),
     );
   }
 }
 
 class _NavContent extends StatelessWidget {
-  const _NavContent({this.extended = true, required this.onLogout});
+  const _NavContent({
+    this.extended = true,
+    required this.current,
+    required this.onNavigate,
+    required this.onLogout,
+  });
 
   final bool extended;
+  final AdminPage current;
+  final ValueChanged<AdminPage> onNavigate;
   final VoidCallback onLogout;
 
   @override
@@ -140,12 +199,22 @@ class _NavContent extends StatelessWidget {
             child: Center(child: ZonixBadge(size: 34)),
           );
 
-    final navItem = _NavItem(
-      icon: Icons.storefront_rounded,
-      label: 'Shops',
-      selected: true,
-      extended: extended,
-    );
+    final navItems = [
+      _NavItem(
+        icon: Icons.storefront_rounded,
+        label: 'Shops',
+        selected: current == AdminPage.shops,
+        extended: extended,
+        onTap: () => onNavigate(AdminPage.shops),
+      ),
+      _NavItem(
+        icon: Icons.system_update_rounded,
+        label: 'App version',
+        selected: current == AdminPage.appVersion,
+        extended: extended,
+        onTap: () => onNavigate(AdminPage.appVersion),
+      ),
+    ];
 
     final logoutItem = Padding(
       padding: const EdgeInsets.symmetric(vertical: AppDimens.spacing12),
@@ -162,7 +231,7 @@ class _NavContent extends StatelessWidget {
     return Column(
       children: [
         brandRow,
-        navItem,
+        ...navItems,
         const Spacer(),
         const Divider(height: 1),
         logoutItem,
