@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/shop_activity.dart';
 import '../../../models/shop_stats.dart';
 import '../../../models/shop_transaction.dart';
 import '../../../services/shop_service.dart';
 import '../../../utils/date_format.dart';
+import '../../../utils/shop_activity_aggregate.dart';
 import '../../../utils/money_format.dart';
 import 'filter_row.dart';
 import 'stat_widgets.dart';
@@ -38,6 +40,7 @@ class TransactionsModal extends StatefulWidget {
 class TransactionsModalState extends State<TransactionsModal> {
   _TxFilter _filter = _TxFilter.today;
   DateTimeRange? _customRange;
+  ShopActivity? _activity;
   List<ShopTransaction> _transactions = [];
   bool _loading = true;
 
@@ -71,19 +74,44 @@ class TransactionsModalState extends State<TransactionsModal> {
     }
   }
 
+  /// Fetches only the selected range; the filter chips then re-slice those
+  /// documents locally, and only a chip reaching further back than the last
+  /// fetch goes to the network again. The catalog is skipped — nothing here
+  /// shows a product count.
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final transactions = await widget.shopService.getShopTransactions(
+      final window = _resolveRange();
+      final activity = await widget.shopService.getShopActivity(
         widget.slug,
-        range: _resolveRange(),
+        from: window.start,
+        to: window.end,
+        includeProducts: false,
       );
-      if (mounted) setState(() => _transactions = transactions);
+      if (mounted) {
+        setState(() {
+          _activity = activity;
+          _transactions = transactionsFrom(activity, range: _resolveRange());
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _transactions = []);
+      if (mounted) {
+        setState(() {
+          _activity = null;
+          _transactions = [];
+        });
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _applyFilter() {
+    final activity = _activity;
+    if (activity == null) return;
+    setState(() {
+      _transactions = transactionsFrom(activity, range: _resolveRange());
+    });
   }
 
   Future<void> _selectFilter(_TxFilter filter) async {
@@ -108,7 +136,14 @@ class TransactionsModalState extends State<TransactionsModal> {
     } else {
       setState(() => _filter = filter);
     }
-    _load();
+    final window = _resolveRange();
+    final activity = _activity;
+    if (activity != null &&
+        activity.covers(from: window.start, to: window.end)) {
+      _applyFilter();
+    } else {
+      _load();
+    }
   }
 
   @override

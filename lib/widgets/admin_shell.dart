@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/app_version_screen.dart';
 import '../screens/auth_gate.dart';
+import '../screens/platform_overview_screen.dart';
 import '../screens/shop_list_screen.dart';
 import '../services/auth_service.dart';
 import '../services/shop_service.dart';
@@ -14,7 +15,7 @@ const double _railExtendedBreakpoint = 1200;
 /// The top-level pages the nav rail switches between. Each one wraps itself
 /// in an [AdminShell] and names itself here, so the rail highlights the
 /// right entry without the shell having to inspect the route.
-enum AdminPage { shops, appVersion }
+enum AdminPage { shops, overview, appVersion }
 
 /// Responsive admin dashboard frame: a persistent side nav rail on wide
 /// screens, a drawer + app bar on narrow/mobile screens. Wraps the
@@ -59,6 +60,10 @@ class AdminShell extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => switch (target) {
           AdminPage.shops => ShopListScreen(
+            authService: authService,
+            shopService: shopService,
+          ),
+          AdminPage.overview => PlatformOverviewScreen(
             authService: authService,
             shopService: shopService,
           ),
@@ -206,6 +211,13 @@ class _NavContent extends StatelessWidget {
         selected: current == AdminPage.shops,
         extended: extended,
         onTap: () => onNavigate(AdminPage.shops),
+      ),
+      _NavItem(
+        icon: Icons.insights_rounded,
+        label: 'Overview',
+        selected: current == AdminPage.overview,
+        extended: extended,
+        onTap: () => onNavigate(AdminPage.overview),
       ),
       _NavItem(
         icon: Icons.system_update_rounded,

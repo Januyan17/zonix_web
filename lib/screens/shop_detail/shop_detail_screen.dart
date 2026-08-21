@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../models/product.dart';
 import '../../models/shop.dart';
+import '../../models/shop_activity.dart';
 import '../../models/shop_stats.dart';
 import '../../models/shop_user.dart';
 import '../../services/shop_service.dart';
 import '../../services/supabase_storage_service.dart';
 import '../../utils/date_format.dart';
 import '../../utils/error_utils.dart';
+import '../../utils/shop_activity_aggregate.dart';
 import '../../widgets/trend_chart.dart';
 import 'widgets/delete_dialogs.dart';
 import 'widgets/filter_row.dart';
@@ -42,6 +44,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
 
   Shop? _shop;
   List<ShopUser> _users = [];
+  ShopActivity? _activity;
   ShopStats? _stats;
   List<DailyStat>? _dailySeries;
   List<Product> _products = [];
@@ -63,9 +66,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   void initState() {
     super.initState();
     _load();
-    _loadStats();
-    _loadSeries();
-    _loadProducts();
+    _loadActivity();
   }
 
   /// The chart needs a concrete, bounded window even in "all time" mode
@@ -110,24 +111,6 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
   }
 
-  Future<void> _loadSeries() async {
-    setState(() => _seriesLoading = true);
-    try {
-      final (start, end, _) = _resolveChartWindow();
-      final series = await widget.shopService.getDailySeries(
-        widget.slug,
-        start: start,
-        end: end,
-      );
-      if (mounted) setState(() => _dailySeries = series);
-    } catch (_) {
-      // The chart is supplementary; a failure here shouldn't block the rest
-      // of the page from showing.
-    } finally {
-      if (mounted) setState(() => _seriesLoading = false);
-    }
-  }
-
   StatsDateRange? _resolveRange() {
     final now = DateTime.now();
     switch (_filter) {
@@ -154,6 +137,21 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
   }
 
+  /// The narrowest day range that still answers everything on the page.
+  /// The tiles and the chart don't always ask the same question — the Day
+  /// filter totals today but charts the last 7 days — so the fetch has to
+  /// span both. All time is unbounded on purpose: there's no window that
+  /// answers it.
+  ({DateTime? from, DateTime? to}) _activityWindow() {
+    final range = _resolveRange();
+    if (range == null) return (from: null, to: null);
+    final (chartStart, chartEnd, _) = _resolveChartWindow();
+    return (
+      from: range.start.isBefore(chartStart) ? range.start : chartStart,
+      to: range.end.isAfter(chartEnd) ? range.end : chartEnd,
+    );
+  }
+
   Future<void> _selectFilter(_DateFilter filter) async {
     if (filter == _DateFilter.custom) {
       final now = DateTime.now();
@@ -176,8 +174,16 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     } else {
       setState(() => _filter = filter);
     }
-    _loadStats();
-    _loadSeries();
+    // A narrower filter is answered from the documents already in hand;
+    // only one reaching further back than the last fetch goes to the
+    // network. Day -> Month costs one read, Month -> Day costs nothing.
+    final window = _activityWindow();
+    final activity = _activity;
+    if (activity != null && activity.covers(from: window.from, to: window.to)) {
+      _applyFilter();
+    } else {
+      _loadActivity();
+    }
   }
 
   Future<void> _load() async {
@@ -203,27 +209,71 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
   }
 
-  Future<void> _loadStats() async {
-    setState(() => _statsLoading = true);
+  /// The one read behind the stat tiles, the trend chart and the product
+  /// grid alike. All three are derived from the same documents, so they're
+  /// fetched together once, for the selected filter's window only, and
+  /// re-derived locally afterwards — a fetch per section, per filter click,
+  /// over the shop's entire sales history, re-downloaded years of records
+  /// to answer a question about today.
+  Future<void> _loadActivity() async {
+    setState(() {
+      _statsLoading = true;
+      _seriesLoading = true;
+      _productsLoading = true;
+    });
     try {
-      final stats = await widget.shopService.getShopStats(
+      final window = _activityWindow();
+      final activity = await widget.shopService.getShopActivity(
         widget.slug,
-        range: _resolveRange(),
+        from: window.from,
+        to: window.to,
       );
-      if (mounted) setState(() => _stats = stats);
+      if (mounted) {
+        setState(() {
+          _activity = activity;
+          _products = productsFrom(activity.products);
+        });
+        _applyFilter();
+      }
     } catch (_) {
-      // Stats are supplementary; a failure here shouldn't block the rest of
-      // the page from showing.
+      // Stats, chart and products are supplementary; a failure here
+      // shouldn't block the rest of the page from showing.
     } finally {
-      if (mounted) setState(() => _statsLoading = false);
+      if (mounted) {
+        setState(() {
+          _statsLoading = false;
+          _seriesLoading = false;
+          _productsLoading = false;
+        });
+      }
     }
   }
 
+  /// Re-derives the tiles and the chart for the selected date filter from
+  /// the activity already fetched. No network read.
+  void _applyFilter() {
+    final activity = _activity;
+    if (activity == null) return;
+    final (start, end, _) = _resolveChartWindow();
+    setState(() {
+      _stats = statsFrom(activity, range: _resolveRange());
+      _dailySeries = dailySeriesFrom(activity, start: start, end: end);
+    });
+  }
+
+  /// Re-reads just the catalog, after the admin adds, edits or deletes a
+  /// product. Those edits leave the transaction documents untouched, so the
+  /// rest of the activity is kept as-is rather than re-fetched.
   Future<void> _loadProducts() async {
     setState(() => _productsLoading = true);
     try {
-      final products = await widget.shopService.getShopProducts(widget.slug);
-      if (mounted) setState(() => _products = products);
+      final docs = await widget.shopService.getProductDocs(widget.slug);
+      if (mounted) {
+        setState(() {
+          _products = productsFrom(docs);
+          _activity = _activity?.withProducts(docs);
+        });
+      }
     } catch (_) {
       // Products are supplementary; a failure here shouldn't block the rest
       // of the page from showing.
@@ -734,12 +784,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
           : _shop == null
           ? const Center(child: Text('Shop not found.'))
           : RefreshIndicator(
-              onRefresh: () => Future.wait([
-                _load(),
-                _loadStats(),
-                _loadSeries(),
-                _loadProducts(),
-              ]),
+              onRefresh: () => Future.wait([_load(), _loadActivity()]),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 900),

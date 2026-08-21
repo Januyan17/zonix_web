@@ -4,10 +4,10 @@ import 'package:firebase_core/firebase_core.dart';
 
 import '../models/product.dart';
 import '../models/shop.dart';
-import '../models/shop_stats.dart';
-import '../models/shop_transaction.dart';
+import '../models/shop_activity.dart';
 import '../models/shop_user.dart';
 import '../models/user_session.dart';
+import '../utils/shop_activity_aggregate.dart';
 
 class ShopCodeTakenException implements Exception {
   const ShopCodeTakenException();
@@ -100,22 +100,19 @@ class ShopService {
     return snapshot.docs.map((d) => ShopUser.fromMap(d.data())).toList();
   }
 
-  /// Active (non-deleted) products for a shop, sorted alphabetically by
-  /// name for a stable, predictable display order.
-  Future<List<Product>> getShopProducts(String slug) async {
+  /// The shop's raw product catalog. Callers map it with productsFrom,
+  /// which is also what turns the copy carried by [getShopActivity] into
+  /// [Product]s — one code path for both, so the two can never disagree on
+  /// ordering or on which products count as deleted.
+  Future<List<ActivityDoc>> getProductDocs(String slug) async {
     final snapshot = await _firestore
         .collection('shops')
         .doc(slug)
         .collection('products')
         .get();
-    final products = snapshot.docs
-        .map((d) => Product.fromMap(d.id, d.data()))
-        .where((p) => !p.isDeleted)
+    return snapshot.docs
+        .map((d) => ActivityDoc(id: d.id, data: d.data()))
         .toList();
-    products.sort(
-      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-    );
-    return products;
   }
 
   /// A fresh product id, allocated client-side with no network call. Lets
@@ -270,196 +267,68 @@ class ShopService {
     });
   }
 
-  /// [range] filters sales/expenses/income by their created_at date
-  /// (inclusive of both ends); product count is always all-time since it's
-  /// a catalog size, not an activity metric. Filtering happens client-side
-  /// after fetching, since created_at is stored as an ISO8601 string rather
-  /// than a Firestore Timestamp, which keeps this immune to any timezone
-  /// mismatch between how the mobile app serializes dates and how a
-  /// server-side range query would need to bound them.
-  Future<ShopStats> getShopStats(String slug, {StatsDateRange? range}) async {
-    final shopRef = _firestore.collection('shops').doc(slug);
-    final results = await Future.wait([
-      shopRef.collection('sales').get(),
-      shopRef.collection('expenses').get(),
-      shopRef.collection('additional_income').get(),
-      shopRef.collection('products').get(),
-    ]);
-
-    bool inRange(Map<String, dynamic> data) {
-      if (range == null) return true;
-      final raw = data['created_at'] as String?;
-      final createdAt = raw == null ? null : DateTime.tryParse(raw);
-      if (createdAt == null) return false;
-      final endExclusive = range.end.add(const Duration(days: 1));
-      return !createdAt.isBefore(range.start) &&
-          createdAt.isBefore(endExclusive);
-    }
-
-    double sumField(
-      QuerySnapshot<Map<String, dynamic>> snapshot,
-      String field,
-    ) {
-      var total = 0.0;
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        if (data['is_deleted'] == true) continue;
-        if (!inRange(data)) continue;
-        total += (data[field] as num?)?.toDouble() ?? 0;
-      }
-      return total;
-    }
-
-    int countActiveInRange(QuerySnapshot<Map<String, dynamic>> snapshot) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        return data['is_deleted'] != true && inRange(data);
-      }).length;
-    }
-
-    int countActive(QuerySnapshot<Map<String, dynamic>> snapshot) {
-      return snapshot.docs
-          .where((doc) => doc.data()['is_deleted'] != true)
-          .length;
-    }
-
-    double sumCogs(QuerySnapshot<Map<String, dynamic>> snapshot) {
-      var total = 0.0;
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        if (data['is_deleted'] == true) continue;
-        if (!inRange(data)) continue;
-        final items = data['items'] as List<dynamic>? ?? const [];
-        for (final item in items) {
-          if (item is! Map) continue;
-          final unitCost = (item['unit_cost'] as num?)?.toDouble() ?? 0;
-          final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
-          total += unitCost * quantity;
-        }
-      }
-      return total;
-    }
-
-    final salesSnapshot = results[0];
-    final expensesSnapshot = results[1];
-    final incomeSnapshot = results[2];
-    final productsSnapshot = results[3];
-
-    return ShopStats(
-      salesCount: countActiveInRange(salesSnapshot),
-      totalRevenue: sumField(salesSnapshot, 'total'),
-      totalCogs: sumCogs(salesSnapshot),
-      totalExpenses: sumField(expensesSnapshot, 'amount'),
-      totalAdditionalIncome: sumField(incomeSnapshot, 'amount'),
-      productCount: countActive(productsSnapshot),
-    );
-  }
-
-  /// The itemized activity behind [getShopStats]'s totals: every sale,
-  /// expense, and additional-income entry in [range] (inclusive of both
-  /// ends, same semantics as getShopStats), newest first. [range] null
-  /// means all-time.
-  Future<List<ShopTransaction>> getShopTransactions(
+  /// A shop's transaction documents for the day range [from, to]
+  /// (inclusive of both ends; null on a side means unbounded), in a single
+  /// read of each collection. Callers derive the stat tiles, the trend
+  /// chart, and the itemized transaction list from this one result (see
+  /// shop_activity_aggregate.dart) instead of re-reading per date range.
+  ///
+  /// The server-side bound is deliberately coarse — see
+  /// [activityQueryBounds] — and exists only to keep a shop's whole sales
+  /// history from crossing the network to answer a question about one
+  /// week. The exact range filter still runs client-side on what comes
+  /// back, so the figures don't depend on how the mobile app happens to
+  /// serialize its dates. A document whose created_at isn't an ISO8601
+  /// string is outside every bounded window, exactly as the client-side
+  /// filter already treats it.
+  ///
+  /// [includeProducts] backs the product-count tile only; views that show
+  /// transactions alone skip that read. The catalog is never date-scoped —
+  /// a product is current regardless of when it was added.
+  Future<ShopActivity> getShopActivity(
     String slug, {
-    StatsDateRange? range,
+    DateTime? from,
+    DateTime? to,
+    bool includeProducts = true,
   }) async {
     final shopRef = _firestore.collection('shops').doc(slug);
-    final results = await Future.wait([
-      shopRef.collection('sales').get(),
-      shopRef.collection('expenses').get(),
-      shopRef.collection('additional_income').get(),
-    ]);
+    final bounds = activityQueryBounds(from: from, to: to);
 
-    bool inRange(Map<String, dynamic> data) {
-      if (range == null) return true;
-      final raw = data['created_at'] as String?;
-      final createdAt = raw == null ? null : DateTime.tryParse(raw);
-      if (createdAt == null) return false;
-      final endExclusive = range.end.add(const Duration(days: 1));
-      return !createdAt.isBefore(range.start) &&
-          createdAt.isBefore(endExclusive);
+    Query<Map<String, dynamic>> scoped(String collection) {
+      Query<Map<String, dynamic>> query = shopRef.collection(collection);
+      final startAt = bounds.startAt;
+      final endBefore = bounds.endBefore;
+      if (startAt != null) {
+        query = query.where('created_at', isGreaterThanOrEqualTo: startAt);
+      }
+      if (endBefore != null) {
+        query = query.where('created_at', isLessThan: endBefore);
+      }
+      return query;
     }
 
-    List<ShopTransaction> mapDocs(
-      QuerySnapshot<Map<String, dynamic>> snapshot,
-      ShopTransactionType type,
-    ) {
-      return snapshot.docs
-          .map((doc) => (doc.id, doc.data()))
-          .where((entry) => entry.$2['is_deleted'] != true && inRange(entry.$2))
-          .map((entry) => ShopTransaction.fromMap(entry.$1, type, entry.$2))
+    final results = await Future.wait([
+      scoped('sales').get(),
+      scoped('expenses').get(),
+      scoped('additional_income').get(),
+      if (includeProducts) shopRef.collection('products').get(),
+    ]);
+
+    List<ActivityDoc> docs(int index) {
+      if (index >= results.length) return const [];
+      return results[index].docs
+          .map((d) => ActivityDoc(id: d.id, data: d.data()))
           .toList();
     }
 
-    final transactions = [
-      ...mapDocs(results[0], ShopTransactionType.sale),
-      ...mapDocs(results[1], ShopTransactionType.expense),
-      ...mapDocs(results[2], ShopTransactionType.income),
-    ];
-    transactions.sort((a, b) {
-      final at = a.createdAt;
-      final bt = b.createdAt;
-      if (at == null || bt == null) return 0;
-      return bt.compareTo(at);
-    });
-    return transactions;
-  }
-
-  /// Daily revenue/expense totals for [start, end] (inclusive), for the
-  /// trend chart. One point per calendar day in the range, zero-filled for
-  /// days with no activity so the chart doesn't skip gaps.
-  Future<List<DailyStat>> getDailySeries(
-    String slug, {
-    required DateTime start,
-    required DateTime end,
-  }) async {
-    final shopRef = _firestore.collection('shops').doc(slug);
-    final results = await Future.wait([
-      shopRef.collection('sales').get(),
-      shopRef.collection('expenses').get(),
-    ]);
-    final salesSnapshot = results[0];
-    final expensesSnapshot = results[1];
-
-    final startDay = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day);
-    final dayCount = endDay.difference(startDay).inDays + 1;
-
-    final revenueByDay = List<double>.filled(dayCount, 0);
-    final expensesByDay = List<double>.filled(dayCount, 0);
-
-    int? dayIndex(String? rawCreatedAt) {
-      if (rawCreatedAt == null) return null;
-      final createdAt = DateTime.tryParse(rawCreatedAt);
-      if (createdAt == null) return null;
-      final day = DateTime(createdAt.year, createdAt.month, createdAt.day);
-      final index = day.difference(startDay).inDays;
-      if (index < 0 || index >= dayCount) return null;
-      return index;
-    }
-
-    for (final doc in salesSnapshot.docs) {
-      final data = doc.data();
-      if (data['is_deleted'] == true) continue;
-      final index = dayIndex(data['created_at'] as String?);
-      if (index == null) continue;
-      revenueByDay[index] += (data['total'] as num?)?.toDouble() ?? 0;
-    }
-    for (final doc in expensesSnapshot.docs) {
-      final data = doc.data();
-      if (data['is_deleted'] == true) continue;
-      final index = dayIndex(data['created_at'] as String?);
-      if (index == null) continue;
-      expensesByDay[index] += (data['amount'] as num?)?.toDouble() ?? 0;
-    }
-
-    return List.generate(dayCount, (i) {
-      return DailyStat(
-        day: startDay.add(Duration(days: i)),
-        revenue: revenueByDay[i],
-        expenses: expensesByDay[i],
-      );
-    });
+    return ShopActivity(
+      sales: docs(0),
+      expenses: docs(1),
+      additionalIncome: docs(2),
+      products: docs(3),
+      from: from,
+      to: to,
+    );
   }
 
   Future<ShopCreationResult> createShop({
