@@ -12,6 +12,7 @@ import '../theme/zonix_colors.dart';
 import '../utils/date_format.dart';
 import '../utils/error_utils.dart';
 import '../utils/money_format.dart';
+import '../utils/percent_format.dart';
 import '../widgets/admin_shell.dart';
 import '../widgets/shop_growth_chart.dart';
 import '../widgets/trend_chart.dart';
@@ -180,6 +181,8 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
           const SizedBox(height: AppDimens.spacing16),
           _SummaryTiles(health: health),
           const SizedBox(height: AppDimens.spacing16),
+          _ActivityMixCard(health: health),
+          const SizedBox(height: AppDimens.spacing16),
           ShopGrowthChart(loading: false, points: health.growth),
           const SizedBox(height: AppDimens.spacing16),
           _ShopHealthCard(health: health, onOpenShop: _openShop),
@@ -259,6 +262,9 @@ class _SummaryTiles extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final stale = health.stale().length;
     final nearLimit = health.nearLimit.length;
+    final newThisMonth = health.growth.isEmpty
+        ? 0
+        : health.growth.last.newShops;
 
     return Wrap(
       spacing: AppDimens.spacing10,
@@ -286,6 +292,14 @@ class _SummaryTiles extends StatelessWidget {
           containerColor: stale > 0
               ? colorScheme.errorContainer
               : colorScheme.surfaceContainerHighest,
+        ),
+        StatTile(
+          icon: Icons.person_add_alt_1_outlined,
+          label: 'New this month',
+          value: '$newThisMonth',
+          color: colorScheme.primary,
+          containerColor: colorScheme.primaryContainer,
+          delta: health.signupGrowthRate,
         ),
         StatTile(
           icon: Icons.speed_rounded,
@@ -609,11 +623,17 @@ class _ProportionRow extends StatelessWidget {
     required this.label,
     required this.count,
     required this.total,
+    this.color,
   });
 
   final String label;
   final int count;
   final int total;
+
+  /// Bar fill. Defaults to the single-series chart color; the activity mix
+  /// overrides it per row because there the rows are grades of the same
+  /// scale (selling → dormant) rather than unrelated counts.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -639,7 +659,9 @@ class _ProportionRow extends StatelessWidget {
               value: fraction,
               minHeight: 8,
               backgroundColor: colorScheme.surfaceContainerHighest,
-              valueColor: const AlwaysStoppedAnimation(ZonixColors.chartBlue),
+              valueColor: AlwaysStoppedAnimation(
+                color ?? ZonixColors.chartBlue,
+              ),
             ),
           ),
         ),
@@ -941,6 +963,11 @@ class _VolumeResults extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final ranked = volume.shops.where((s) => s.stats.totalRevenue > 0).toList();
     final peak = ranked.isEmpty ? 0.0 : ranked.first.stats.totalRevenue;
+    final aov = volume.averageOrderValue;
+    final margin = volume.grossMargin;
+    final arps = volume.averageRevenuePerSellingShop;
+    final median = volume.medianRevenuePerSellingShop;
+    final concentration = volume.topShopsShare(5);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -980,6 +1007,51 @@ class _VolumeResults extends StatelessWidget {
               value: '${volume.sellingShopCount} / ${volume.shops.length}',
               color: colorScheme.primary,
               containerColor: colorScheme.primaryContainer,
+            ),
+            StatTile(
+              icon: Icons.shopping_basket_outlined,
+              label: 'Avg order value',
+              value: aov == null ? '—' : formatMoney(aov),
+              color: ZonixColors.chartBlue,
+              containerColor: ZonixColors.cyanContainer,
+            ),
+            StatTile(
+              icon: Icons.percent_rounded,
+              label: 'Gross margin',
+              value: margin == null ? '—' : formatPercent(margin, decimals: 1),
+              color: (margin ?? 0) >= 0
+                  ? colorScheme.tertiary
+                  : colorScheme.error,
+              containerColor: (margin ?? 0) >= 0
+                  ? colorScheme.tertiaryContainer
+                  : colorScheme.errorContainer,
+              sublabel: 'after cost of goods',
+            ),
+            StatTile(
+              icon: Icons.store_mall_directory_outlined,
+              label: 'Revenue per shop',
+              value: arps == null ? '—' : formatMoney(arps),
+              color: colorScheme.onSurfaceVariant,
+              containerColor: colorScheme.surfaceContainerHighest,
+              // The mean alone hides the shape. A median far below it means
+              // the platform's revenue is one or two shops, not a hundred.
+              sublabel: median == null
+                  ? 'across selling shops'
+                  : 'median ${formatMoney(median)}',
+            ),
+            StatTile(
+              icon: Icons.pie_chart_outline_rounded,
+              label: 'Top 5 shops',
+              value: concentration == null
+                  ? '—'
+                  : formatPercent(concentration),
+              color: (concentration ?? 0) >= 0.8
+                  ? colorScheme.error
+                  : colorScheme.onSurfaceVariant,
+              containerColor: (concentration ?? 0) >= 0.8
+                  ? colorScheme.errorContainer
+                  : colorScheme.surfaceContainerHighest,
+              sublabel: 'of all revenue',
             ),
           ],
         ),
@@ -1113,6 +1185,80 @@ class _EmptyNote extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// The four-way liveness census of every shop.
+///
+/// The "needs attention" tile counts shops with a problem; this says which
+/// problem. A platform whose stalled shops are mostly [ShopActivity.neverSold]
+/// has an onboarding failure — those shops were sold and never switched on.
+/// One whose stalled shops mostly went [ShopActivity.dormant] after trading
+/// has a retention failure. Same total, different fix.
+class _ActivityMixCard extends StatelessWidget {
+  const _ActivityMixCard({required this.health});
+
+  final PlatformHealth health;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final mix = health.activityMix();
+    final total = mix.total;
+
+    final rows = [
+      (
+        'Selling (under ${ShopActivityThresholds.quietDays}d)',
+        mix.live,
+        colorScheme.tertiary,
+      ),
+      ('Quiet (${ShopActivityThresholds.quietDays}d+)', mix.quiet, ZonixColors.chartBlue),
+      (
+        'Dormant (${ShopActivityThresholds.dormantDays}d+)',
+        mix.dormant,
+        colorScheme.error,
+      ),
+      ('Never sold', mix.neverSold, colorScheme.onSurfaceVariant),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppDimens.spacing20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Shop activity mix',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppDimens.spacing4),
+            Text(
+              'How recently each of your $total shop'
+              '${total == 1 ? '' : 's'} last rang up a sale. Shops that '
+              'never sold were never onboarded; shops that went dormant '
+              'stopped — the two need different follow-ups.',
+              style: TextStyle(
+                fontSize: AppDimens.fontBody,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppDimens.spacing14),
+            for (final (label, count, color) in rows) ...[
+              _ProportionRow(
+                label: label,
+                count: count,
+                total: total,
+                color: color,
+              ),
+              const SizedBox(height: AppDimens.spacing10),
+            ],
+          ],
+        ),
       ),
     );
   }

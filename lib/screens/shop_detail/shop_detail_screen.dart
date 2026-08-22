@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/product.dart';
 import '../../models/shop.dart';
 import '../../models/shop_activity.dart';
+import '../../models/shop_insights.dart';
 import '../../models/shop_stats.dart';
 import '../../models/shop_user.dart';
 import '../../services/shop_service.dart';
@@ -16,7 +17,9 @@ import 'widgets/filter_row.dart';
 import 'widgets/info_rows.dart';
 import 'widgets/limit_row_and_dialog.dart';
 import 'widgets/product_dialogs.dart';
+import 'widgets/product_performance_card.dart';
 import 'widgets/product_widgets.dart';
+import 'widgets/sales_rhythm_card.dart';
 import 'widgets/shop_links_section.dart';
 import 'widgets/stat_widgets.dart';
 import 'widgets/transactions_modal.dart';
@@ -46,6 +49,12 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   List<ShopUser> _users = [];
   ShopActivity? _activity;
   ShopStats? _stats;
+  StatsComparison? _comparison;
+  List<ProductPerformance> _performance = const [];
+  List<Product> _deadStock = const [];
+  List<HourBucket> _hours = const [];
+  List<WeekdayBucket> _weekdays = const [];
+  VoidStats? _voids;
   List<DailyStat>? _dailySeries;
   List<Product> _products = [];
   bool _loading = true;
@@ -111,6 +120,27 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
   }
 
+  /// The selected filter's own range, named. Distinct from the chart
+  /// window's label: the Day filter totals today while the chart shows the
+  /// last 7 days, and a card reading off the totals must not borrow the
+  /// chart's wider caption.
+  String _filterLabel() {
+    switch (_filter) {
+      case _DateFilter.day:
+        return 'today';
+      case _DateFilter.week:
+        return 'this week';
+      case _DateFilter.month:
+        return 'this month';
+      case _DateFilter.allTime:
+        return 'all time';
+      case _DateFilter.custom:
+        final range = _customRange;
+        if (range == null) return 'all time';
+        return '${formatShortDate(range.start)} - ${formatShortDate(range.end)}';
+    }
+  }
+
   StatsDateRange? _resolveRange() {
     final now = DateTime.now();
     switch (_filter) {
@@ -146,10 +176,20 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     final range = _resolveRange();
     if (range == null) return (from: null, to: null);
     final (chartStart, chartEnd, _) = _resolveChartWindow();
-    return (
-      from: range.start.isBefore(chartStart) ? range.start : chartStart,
-      to: range.end.isAfter(chartEnd) ? range.end : chartEnd,
-    );
+
+    var from = range.start.isBefore(chartStart) ? range.start : chartStart;
+    // The tiles also compare against the period immediately before the
+    // selected one, which is only honest if those documents were actually
+    // fetched — an unfetched previous period reads as zero, and every tile
+    // would claim record growth. This roughly doubles the window on the
+    // Week and Month filters; the Day filter already reaches back further
+    // for its 7-day chart, so it costs nothing there.
+    final previous = precedingRange(range);
+    if (previous != null && previous.start.isBefore(from)) {
+      from = previous.start;
+    }
+
+    return (from: from, to: range.end.isAfter(chartEnd) ? range.end : chartEnd);
   }
 
   Future<void> _selectFilter(_DateFilter filter) async {
@@ -255,9 +295,16 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     final activity = _activity;
     if (activity == null) return;
     final (start, end, _) = _resolveChartWindow();
+    final range = _resolveRange();
     setState(() {
-      _stats = statsFrom(activity, range: _resolveRange());
+      _stats = statsFrom(activity, range: range);
+      _comparison = comparisonFrom(activity, range: range);
       _dailySeries = dailySeriesFrom(activity, start: start, end: end);
+      _performance = productPerformanceFrom(activity, range: range);
+      _deadStock = deadStockFrom(activity, range: range);
+      _hours = hourlySalesFrom(activity, range: range);
+      _weekdays = weekdaySalesFrom(activity, range: range);
+      _voids = voidedSalesFrom(activity, range: range);
     });
   }
 
@@ -988,12 +1035,47 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      StatsSection(loading: _statsLoading, stats: _stats),
+                      StatsSection(
+                        loading: _statsLoading,
+                        stats: _stats,
+                        comparison: _comparison,
+                        voids: _voids,
+                      ),
+                      if (_comparison != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Arrows compare with the previous '
+                          '${_comparison!.previousRange.dayCount} day'
+                          '${_comparison!.previousRange.dayCount == 1 ? '' : 's'} '
+                          '(${formatShortDate(_comparison!.previousRange.start)}'
+                          ' - '
+                          '${formatShortDate(_comparison!.previousRange.end)}).',
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       TrendChart(
                         loading: _seriesLoading,
                         series: _dailySeries,
                         rangeLabel: _resolveChartWindow().$3,
+                      ),
+                      const SizedBox(height: 16),
+                      SalesRhythmCard(
+                        loading: _statsLoading,
+                        hours: _hours,
+                        weekdays: _weekdays,
+                        rangeLabel: _filterLabel(),
+                        showWeekdays: _filter != _DateFilter.day,
+                      ),
+                      const SizedBox(height: 16),
+                      ProductPerformanceCard(
+                        loading: _statsLoading,
+                        performance: _performance,
+                        deadStock: _deadStock,
+                        rangeLabel: _filterLabel(),
                       ),
                       const SizedBox(height: 24),
                       Row(

@@ -5,6 +5,7 @@ library;
 
 import '../models/platform_stats.dart';
 import '../models/shop_stats.dart';
+import 'shop_activity_aggregate.dart';
 
 /// Buckets shop signup dates into the last [months] calendar months,
 /// including months with no signups so the bar chart keeps an even time
@@ -134,6 +135,7 @@ ShopVolumeResult aggregateShopVolume({
   var totalCogs = 0.0;
   var totalExpenses = 0.0;
   var totalIncome = 0.0;
+  var unitsSold = 0.0;
 
   for (final data in sales) {
     if (data['is_deleted'] == true) continue;
@@ -148,8 +150,9 @@ ShopVolumeResult aggregateShopVolume({
     for (final item in items) {
       if (item is! Map) continue;
       final unitCost = (item['unit_cost'] as num?)?.toDouble() ?? 0;
-      final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
+      final quantity = itemQuantity(item);
       totalCogs += unitCost * quantity;
+      unitsSold += quantity;
     }
   }
 
@@ -176,6 +179,7 @@ ShopVolumeResult aggregateShopVolume({
       totalExpenses: totalExpenses,
       totalAdditionalIncome: totalIncome,
       productCount: productCount,
+      unitsSold: unitsSold,
     ),
     series: List.generate(
       dayCount,

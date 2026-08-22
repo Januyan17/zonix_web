@@ -248,6 +248,78 @@ class PlatformVolume {
 
   int get sellingShopCount =>
       shops.where((s) => s.stats.salesCount > 0).length;
+
+  double get totalCogs => shops.fold(0, (sum, s) => sum + s.stats.totalCogs);
+
+  /// Platform basket size. Null when nothing sold — an average over no
+  /// sales is not zero.
+  double? get averageOrderValue {
+    final count = totalSalesCount;
+    return count == 0 ? null : totalRevenue / count;
+  }
+
+  /// Revenue per *selling* shop, not per shop. Dividing by shops that never
+  /// rang anything up measures how many empty shops exist, which the
+  /// churn-risk list already says better.
+  double? get averageRevenuePerSellingShop {
+    final selling = sellingShopCount;
+    return selling == 0 ? null : totalRevenue / selling;
+  }
+
+  /// The middle selling shop's revenue. Read next to
+  /// [averageRevenuePerSellingShop]: a mean far above the median means one
+  /// or two shops are carrying the platform's numbers.
+  double? get medianRevenuePerSellingShop {
+    final values = shops
+        .where((s) => s.stats.totalRevenue > 0)
+        .map((s) => s.stats.totalRevenue)
+        .toList()
+      ..sort();
+    if (values.isEmpty) return null;
+    final middle = values.length ~/ 2;
+    if (values.length.isOdd) return values[middle];
+    return (values[middle - 1] + values[middle]) / 2;
+  }
+
+  /// Share of platform revenue coming from the top [n] shops — the
+  /// concentration risk in one number. Null with no revenue to apportion.
+  ///
+  /// [shops] is already sorted revenue-first, so this is a prefix sum.
+  double? topShopsShare(int n) {
+    final total = totalRevenue;
+    if (total <= 0) return null;
+    final take = n < shops.length ? n : shops.length;
+    var top = 0.0;
+    for (var i = 0; i < take; i++) {
+      top += shops[i].stats.totalRevenue;
+    }
+    return top / total;
+  }
+
+  double? get grossMargin {
+    if (totalRevenue == 0) return null;
+    return (totalRevenue - totalCogs) / totalRevenue;
+  }
+}
+
+/// The four-way split of how recently each shop last sold. The overview's
+/// "needs attention" tile counts the problem shops; this says which kind of
+/// problem, which is what decides whether the fix is onboarding or
+/// re-engagement.
+class ActivityMix {
+  const ActivityMix({
+    required this.live,
+    required this.quiet,
+    required this.dormant,
+    required this.neverSold,
+  });
+
+  final int live;
+  final int quiet;
+  final int dormant;
+  final int neverSold;
+
+  int get total => live + quiet + dormant + neverSold;
 }
 
 /// Everything the overview page loads on entry.
@@ -279,4 +351,45 @@ class PlatformHealth {
 
   List<ShopHealth> get nearLimit =>
       shops.where((s) => s.isNearAnyLimit).toList();
+
+  /// Every shop graded by how recently it sold. Counts all shops including
+  /// brand-new ones, unlike [stale] — this is a census, not a worklist.
+  ActivityMix activityMix({DateTime? now}) {
+    final at = now ?? DateTime.now();
+    var live = 0;
+    var quiet = 0;
+    var dormant = 0;
+    var neverSold = 0;
+    for (final shop in shops) {
+      switch (shop.activity(now: at)) {
+        case ShopActivity.live:
+          live++;
+        case ShopActivity.quiet:
+          quiet++;
+        case ShopActivity.dormant:
+          dormant++;
+        case ShopActivity.neverSold:
+          neverSold++;
+      }
+    }
+    return ActivityMix(
+      live: live,
+      quiet: quiet,
+      dormant: dormant,
+      neverSold: neverSold,
+    );
+  }
+
+  /// Signups this month against last month, as a fraction (0.5 = up 50%).
+  ///
+  /// Null when last month had no signups, or when the series is too short
+  /// to have two months in it: growth from zero is undefined rather than
+  /// infinite.
+  double? get signupGrowthRate {
+    if (growth.length < 2) return null;
+    final previous = growth[growth.length - 2].newShops;
+    if (previous == 0) return null;
+    final current = growth.last.newShops;
+    return (current - previous) / previous;
+  }
 }
