@@ -4,9 +4,10 @@ import 'package:firebase_core/firebase_core.dart';
 
 import '../models/product.dart';
 import '../models/shop.dart';
-import '../models/shop_stats.dart';
-import '../models/shop_transaction.dart';
+import '../models/shop_activity.dart';
 import '../models/shop_user.dart';
+import '../models/user_session.dart';
+import '../utils/shop_activity_aggregate.dart';
 
 class ShopCodeTakenException implements Exception {
   const ShopCodeTakenException();
@@ -55,6 +56,41 @@ class ShopService {
     return Shop.fromMap(doc.data()!);
   }
 
+  /// Currently-active login sessions for a shop user, newest first. Every
+  /// doc in this subcollection represents a device that's presently logged
+  /// in — there's no inactive state to filter out.
+  Future<List<UserSession>> getUserSessions({
+    required String slug,
+    required String uid,
+  }) async {
+    final snapshot = await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .collection('sessions')
+        .orderBy('logged_in_at', descending: true)
+        .get();
+    return snapshot.docs.map((d) => UserSession.fromMap(d.data())).toList();
+  }
+
+  /// Force-logs-out a single device: the mobile app listens to its own
+  /// session doc in real time and signs out immediately once it's deleted.
+  Future<void> deleteUserSession({
+    required String slug,
+    required String uid,
+    required String deviceId,
+  }) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .collection('sessions')
+        .doc(deviceId)
+        .delete();
+  }
+
   Future<List<ShopUser>> getShopUsers(String slug) async {
     final snapshot = await _firestore
         .collection('shops')
@@ -64,20 +100,19 @@ class ShopService {
     return snapshot.docs.map((d) => ShopUser.fromMap(d.data())).toList();
   }
 
-  /// Active (non-deleted) products for a shop, sorted alphabetically by
-  /// name for a stable, predictable display order.
-  Future<List<Product>> getShopProducts(String slug) async {
+  /// The shop's raw product catalog. Callers map it with productsFrom,
+  /// which is also what turns the copy carried by [getShopActivity] into
+  /// [Product]s — one code path for both, so the two can never disagree on
+  /// ordering or on which products count as deleted.
+  Future<List<ActivityDoc>> getProductDocs(String slug) async {
     final snapshot = await _firestore
         .collection('shops')
         .doc(slug)
         .collection('products')
         .get();
-    final products = snapshot.docs
-        .map((d) => Product.fromMap(d.id, d.data()))
-        .where((p) => !p.isDeleted)
+    return snapshot.docs
+        .map((d) => ActivityDoc(id: d.id, data: d.data()))
         .toList();
-    products.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return products;
   }
 
   /// A fresh product id, allocated client-side with no network call. Lets
@@ -134,29 +169,58 @@ class ShopService {
     int? stock,
     String? imageUrl,
   }) async {
-    await _firestore.collection('shops').doc(slug).collection('products').doc(id).update({
-      'name': name,
-      'description': description,
-      'category': category,
-      'sku': sku,
-      'price': price,
-      'cost': cost,
-      'stock': stock,
-      'image_url': imageUrl,
-    });
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .doc(id)
+        .update({
+          'name': name,
+          'description': description,
+          'category': category,
+          'sku': sku,
+          'price': price,
+          'cost': cost,
+          'stock': stock,
+          'image_url': imageUrl,
+        });
   }
 
-  /// Soft delete, consistent with how products are already treated
-  /// everywhere else in this schema (see [getShopStats]'s countActive,
-  /// which filters on the same is_deleted flag).
   Future<void> deleteProduct({required String slug, required String id}) async {
-    await _firestore.collection('shops').doc(slug).collection('products').doc(id).update({
-      'is_deleted': true,
-    });
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .doc(id)
+        .delete();
   }
 
   Future<void> setShopActive(String slug, bool isActive) async {
-    await _firestore.collection('shops').doc(slug).update({'is_active': isActive});
+    await _firestore.collection('shops').doc(slug).update({
+      'is_active': isActive,
+    });
+  }
+
+  /// Controls whether the mobile/POS app shows a "Delete" option for staff
+  /// members. Defaults to false/off when unset on the shop document.
+  Future<void> setStaffDeleteEnabled(String slug, bool enabled) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'staff_delete_enabled': enabled,
+    });
+  }
+
+  /// Max number of devices staff/owner accounts can be signed in on at
+  /// once; the mobile app watches this doc live and signs out the oldest
+  /// session(s) for an affected account as soon as it's exceeded.
+  Future<void> setMaxActiveDevices(
+    String slug, {
+    required int staff,
+    required int owner,
+  }) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'max_active_devices_staff': staff,
+      'max_active_devices_owner': owner,
+    });
   }
 
   /// [limit] null means unlimited. Enforcement of this cap happens in the
@@ -164,7 +228,9 @@ class ShopService {
   /// see the shop detail screen for the count of staff currently in use
   /// against it.
   Future<void> setStaffLimit(String slug, int? limit) async {
-    await _firestore.collection('shops').doc(slug).update({'staff_limit': limit});
+    await _firestore.collection('shops').doc(slug).update({
+      'staff_limit': limit,
+    });
   }
 
   /// [limit] null means unlimited. Enforcement of this cap happens in the
@@ -172,189 +238,97 @@ class ShopService {
   /// value; see the shop detail screen for the count of products currently
   /// in use against it.
   Future<void> setProductLimit(String slug, int? limit) async {
-    await _firestore.collection('shops').doc(slug).update({'product_limit': limit});
+    await _firestore.collection('shops').doc(slug).update({
+      'product_limit': limit,
+    });
   }
 
-  /// [range] filters sales/expenses/income by their created_at date
-  /// (inclusive of both ends); product count is always all-time since it's
-  /// a catalog size, not an activity metric. Filtering happens client-side
-  /// after fetching, since created_at is stored as an ISO8601 string rather
-  /// than a Firestore Timestamp, which keeps this immune to any timezone
-  /// mismatch between how the mobile app serializes dates and how a
-  /// server-side range query would need to bound them.
-  Future<ShopStats> getShopStats(String slug, {StatsDateRange? range}) async {
-    final shopRef = _firestore.collection('shops').doc(slug);
-    final results = await Future.wait([
-      shopRef.collection('sales').get(),
-      shopRef.collection('expenses').get(),
-      shopRef.collection('additional_income').get(),
-      shopRef.collection('products').get(),
-    ]);
-
-    bool inRange(Map<String, dynamic> data) {
-      if (range == null) return true;
-      final raw = data['created_at'] as String?;
-      final createdAt = raw == null ? null : DateTime.tryParse(raw);
-      if (createdAt == null) return false;
-      final endExclusive = range.end.add(const Duration(days: 1));
-      return !createdAt.isBefore(range.start) && createdAt.isBefore(endExclusive);
-    }
-
-    double sumField(QuerySnapshot<Map<String, dynamic>> snapshot, String field) {
-      var total = 0.0;
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        if (data['is_deleted'] == true) continue;
-        if (!inRange(data)) continue;
-        total += (data[field] as num?)?.toDouble() ?? 0;
-      }
-      return total;
-    }
-
-    int countActiveInRange(QuerySnapshot<Map<String, dynamic>> snapshot) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        return data['is_deleted'] != true && inRange(data);
-      }).length;
-    }
-
-    int countActive(QuerySnapshot<Map<String, dynamic>> snapshot) {
-      return snapshot.docs.where((doc) => doc.data()['is_deleted'] != true).length;
-    }
-
-    double sumCogs(QuerySnapshot<Map<String, dynamic>> snapshot) {
-      var total = 0.0;
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        if (data['is_deleted'] == true) continue;
-        if (!inRange(data)) continue;
-        final items = data['items'] as List<dynamic>? ?? const [];
-        for (final item in items) {
-          if (item is! Map) continue;
-          final unitCost = (item['unit_cost'] as num?)?.toDouble() ?? 0;
-          final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
-          total += unitCost * quantity;
-        }
-      }
-      return total;
-    }
-
-    final salesSnapshot = results[0];
-    final expensesSnapshot = results[1];
-    final incomeSnapshot = results[2];
-    final productsSnapshot = results[3];
-
-    return ShopStats(
-      salesCount: countActiveInRange(salesSnapshot),
-      totalRevenue: sumField(salesSnapshot, 'total'),
-      totalCogs: sumCogs(salesSnapshot),
-      totalExpenses: sumField(expensesSnapshot, 'amount'),
-      totalAdditionalIncome: sumField(incomeSnapshot, 'amount'),
-      productCount: countActive(productsSnapshot),
-    );
+  /// Writes all five shop-link fields at once. A cleared input must arrive
+  /// here as null, not as an empty string: the mobile app treats any
+  /// non-empty value as a link and would keep printing a QR code for it on
+  /// every receipt. Nulls are written explicitly rather than omitted so the
+  /// stale value on the document is actually overwritten. Values are stored
+  /// raw (the handle or address as typed) — the URL each one resolves to is
+  /// derived at print time by the mobile app, never stored.
+  Future<void> setShopLinks(
+    String slug, {
+    required String? website,
+    required String? facebook,
+    required String? instagram,
+    required String? tiktok,
+    required bool linksEnabled,
+  }) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'website': website,
+      'facebook': facebook,
+      'instagram': instagram,
+      'tiktok': tiktok,
+      'shop_links_enabled': linksEnabled,
+    });
   }
 
-  /// The itemized activity behind [getShopStats]'s totals: every sale,
-  /// expense, and additional-income entry in [range] (inclusive of both
-  /// ends, same semantics as getShopStats), newest first. [range] null
-  /// means all-time.
-  Future<List<ShopTransaction>> getShopTransactions(String slug, {StatsDateRange? range}) async {
+  /// A shop's transaction documents for the day range [from, to]
+  /// (inclusive of both ends; null on a side means unbounded), in a single
+  /// read of each collection. Callers derive the stat tiles, the trend
+  /// chart, and the itemized transaction list from this one result (see
+  /// shop_activity_aggregate.dart) instead of re-reading per date range.
+  ///
+  /// The server-side bound is deliberately coarse — see
+  /// [activityQueryBounds] — and exists only to keep a shop's whole sales
+  /// history from crossing the network to answer a question about one
+  /// week. The exact range filter still runs client-side on what comes
+  /// back, so the figures don't depend on how the mobile app happens to
+  /// serialize its dates. A document whose created_at isn't an ISO8601
+  /// string is outside every bounded window, exactly as the client-side
+  /// filter already treats it.
+  ///
+  /// [includeProducts] backs the product-count tile only; views that show
+  /// transactions alone skip that read. The catalog is never date-scoped —
+  /// a product is current regardless of when it was added.
+  Future<ShopActivity> getShopActivity(
+    String slug, {
+    DateTime? from,
+    DateTime? to,
+    bool includeProducts = true,
+  }) async {
     final shopRef = _firestore.collection('shops').doc(slug);
-    final results = await Future.wait([
-      shopRef.collection('sales').get(),
-      shopRef.collection('expenses').get(),
-      shopRef.collection('additional_income').get(),
-    ]);
+    final bounds = activityQueryBounds(from: from, to: to);
 
-    bool inRange(Map<String, dynamic> data) {
-      if (range == null) return true;
-      final raw = data['created_at'] as String?;
-      final createdAt = raw == null ? null : DateTime.tryParse(raw);
-      if (createdAt == null) return false;
-      final endExclusive = range.end.add(const Duration(days: 1));
-      return !createdAt.isBefore(range.start) && createdAt.isBefore(endExclusive);
+    Query<Map<String, dynamic>> scoped(String collection) {
+      Query<Map<String, dynamic>> query = shopRef.collection(collection);
+      final startAt = bounds.startAt;
+      final endBefore = bounds.endBefore;
+      if (startAt != null) {
+        query = query.where('created_at', isGreaterThanOrEqualTo: startAt);
+      }
+      if (endBefore != null) {
+        query = query.where('created_at', isLessThan: endBefore);
+      }
+      return query;
     }
 
-    List<ShopTransaction> mapDocs(
-      QuerySnapshot<Map<String, dynamic>> snapshot,
-      ShopTransactionType type,
-    ) {
-      return snapshot.docs
-          .map((doc) => (doc.id, doc.data()))
-          .where((entry) => entry.$2['is_deleted'] != true && inRange(entry.$2))
-          .map((entry) => ShopTransaction.fromMap(entry.$1, type, entry.$2))
+    final results = await Future.wait([
+      scoped('sales').get(),
+      scoped('expenses').get(),
+      scoped('additional_income').get(),
+      if (includeProducts) shopRef.collection('products').get(),
+    ]);
+
+    List<ActivityDoc> docs(int index) {
+      if (index >= results.length) return const [];
+      return results[index].docs
+          .map((d) => ActivityDoc(id: d.id, data: d.data()))
           .toList();
     }
 
-    final transactions = [
-      ...mapDocs(results[0], ShopTransactionType.sale),
-      ...mapDocs(results[1], ShopTransactionType.expense),
-      ...mapDocs(results[2], ShopTransactionType.income),
-    ];
-    transactions.sort((a, b) {
-      final at = a.createdAt;
-      final bt = b.createdAt;
-      if (at == null || bt == null) return 0;
-      return bt.compareTo(at);
-    });
-    return transactions;
-  }
-
-  /// Daily revenue/expense totals for [start, end] (inclusive), for the
-  /// trend chart. One point per calendar day in the range, zero-filled for
-  /// days with no activity so the chart doesn't skip gaps.
-  Future<List<DailyStat>> getDailySeries(
-    String slug, {
-    required DateTime start,
-    required DateTime end,
-  }) async {
-    final shopRef = _firestore.collection('shops').doc(slug);
-    final results = await Future.wait([
-      shopRef.collection('sales').get(),
-      shopRef.collection('expenses').get(),
-    ]);
-    final salesSnapshot = results[0];
-    final expensesSnapshot = results[1];
-
-    final startDay = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day);
-    final dayCount = endDay.difference(startDay).inDays + 1;
-
-    final revenueByDay = List<double>.filled(dayCount, 0);
-    final expensesByDay = List<double>.filled(dayCount, 0);
-
-    int? dayIndex(String? rawCreatedAt) {
-      if (rawCreatedAt == null) return null;
-      final createdAt = DateTime.tryParse(rawCreatedAt);
-      if (createdAt == null) return null;
-      final day = DateTime(createdAt.year, createdAt.month, createdAt.day);
-      final index = day.difference(startDay).inDays;
-      if (index < 0 || index >= dayCount) return null;
-      return index;
-    }
-
-    for (final doc in salesSnapshot.docs) {
-      final data = doc.data();
-      if (data['is_deleted'] == true) continue;
-      final index = dayIndex(data['created_at'] as String?);
-      if (index == null) continue;
-      revenueByDay[index] += (data['total'] as num?)?.toDouble() ?? 0;
-    }
-    for (final doc in expensesSnapshot.docs) {
-      final data = doc.data();
-      if (data['is_deleted'] == true) continue;
-      final index = dayIndex(data['created_at'] as String?);
-      if (index == null) continue;
-      expensesByDay[index] += (data['amount'] as num?)?.toDouble() ?? 0;
-    }
-
-    return List.generate(dayCount, (i) {
-      return DailyStat(
-        day: startDay.add(Duration(days: i)),
-        revenue: revenueByDay[i],
-        expenses: expensesByDay[i],
-      );
-    });
+    return ShopActivity(
+      sales: docs(0),
+      expenses: docs(1),
+      additionalIncome: docs(2),
+      products: docs(3),
+      from: from,
+      to: to,
+    );
   }
 
   Future<ShopCreationResult> createShop({
@@ -397,6 +371,11 @@ class ShopService {
       isActive: true,
       ownerUid: ownerUid,
       createdAt: nowIso,
+      staffLimit: 1,
+      productLimit: 10,
+      // New shops start with no links, and with the owner locked out of
+      // editing them from the mobile app until an admin opts them in.
+      shopLinksEnabled: false,
     );
 
     final ownerUser = ShopUser(
@@ -405,7 +384,9 @@ class ShopService {
       displayName: ownerDisplayName,
       email: email,
       role: 'owner',
-      isEnabled: true,
+      // New shops start disabled and need platform-admin approval (via the
+      // Enabled toggle) before the owner can sign in.
+      isEnabled: false,
       createdAt: nowIso,
       updatedAt: nowIso,
       isDeleted: false,
@@ -414,13 +395,14 @@ class ShopService {
     final batch = _firestore.batch();
     batch.set(_firestore.collection('shops').doc(slug), shop.toMap());
     batch.set(
-      _firestore.collection('shops').doc(slug).collection('users').doc(ownerUid),
+      _firestore
+          .collection('shops')
+          .doc(slug)
+          .collection('users')
+          .doc(ownerUid),
       ownerUser.toMap(),
     );
-    batch.set(_shopIndex.doc(slug), {
-      'name': shopName,
-      'createdAt': nowIso,
-    });
+    batch.set(_shopIndex.doc(slug), {'name': shopName, 'createdAt': nowIso});
     await batch.commit();
 
     return ShopCreationResult(
@@ -515,8 +497,16 @@ class ShopService {
   /// their shop access (isMember/isOwner check this doc). Their Firebase
   /// Auth account itself can't be deleted from the client SDK for anyone
   /// but the signed-in user, so it's left behind, harmless and orphaned.
-  Future<void> deleteShopUser({required String slug, required String uid}) async {
-    await _firestore.collection('shops').doc(slug).collection('users').doc(uid).delete();
+  Future<void> deleteShopUser({
+    required String slug,
+    required String uid,
+  }) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .delete();
   }
 
   /// Firebase Auth passwords can never be recovered or changed by anyone

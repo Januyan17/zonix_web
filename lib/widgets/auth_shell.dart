@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_dimens.dart';
 import '../theme/zonix_colors.dart';
 import 'zonix_badge.dart';
 
@@ -38,7 +39,7 @@ class AuthShell extends StatelessWidget {
         ),
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppDimens.spacing16),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: LayoutBuilder(
@@ -59,15 +60,19 @@ class AuthShell extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Center(child: ZonixBadge(size: narrow ? 60 : 68)),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: AppDimens.spacing24),
                             Text(
                               title,
-                              style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                              style: textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: AppDimens.spacing4),
                             Text(
                               subtitle,
-                              style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
                             ),
                             const SizedBox(height: 28),
                             ...children,
@@ -95,16 +100,20 @@ class AuthErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppDimens.spacing12),
       decoration: BoxDecoration(
         color: colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppDimens.radiusMedium),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline, color: colorScheme.onErrorContainer, size: 20),
-          const SizedBox(width: 8),
+          Icon(
+            Icons.error_outline,
+            color: colorScheme.onErrorContainer,
+            size: AppDimens.iconXl,
+          ),
+          const SizedBox(width: AppDimens.spacing8),
           Expanded(
             child: Text(
               message,

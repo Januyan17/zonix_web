@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../models/shop_stats.dart';
+import '../theme/app_dimens.dart';
 
 /// Daily revenue vs. expenses line chart for the shop detail page's
 /// statistics section. Revenue and expenses share one axis (same currency
@@ -27,7 +28,12 @@ class TrendChart extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 20, 12),
+        padding: const EdgeInsets.fromLTRB(
+          AppDimens.spacing16,
+          AppDimens.spacing16,
+          AppDimens.spacing20,
+          AppDimens.spacing12,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -36,34 +42,35 @@ class TrendChart extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Revenue vs expenses · $rangeLabel',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 _LegendDot(color: revenueColor, label: 'Revenue'),
-                const SizedBox(width: 14),
+                const SizedBox(width: AppDimens.spacing14),
                 _LegendDot(color: expensesColor, label: 'Expenses'),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppDimens.spacing16),
             SizedBox(
               height: 220,
               child: loading
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : (series == null || series!.isEmpty)
-                      ? Center(
-                          child: Text(
-                            'No data for this period.',
-                            style: TextStyle(color: colorScheme.onSurfaceVariant),
-                          ),
-                        )
-                      : _Chart(
-                          series: series!,
-                          revenueColor: revenueColor,
-                          expensesColor: expensesColor,
-                        ),
+                  ? Center(
+                      child: Text(
+                        'No data for this period.',
+                        style: TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                    )
+                  : _Chart(
+                      series: series!,
+                      revenueColor: revenueColor,
+                      expensesColor: expensesColor,
+                    ),
             ),
           ],
         ),
@@ -85,12 +92,18 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 8,
-          height: 8,
+          width: AppDimens.spacing8,
+          height: AppDimens.spacing8,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+        const SizedBox(width: AppDimens.spacing6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: AppDimens.fontLabel,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }
@@ -134,12 +147,17 @@ class _Chart extends StatelessWidget {
         gridData: FlGridData(
           drawVerticalLine: false,
           horizontalInterval: maxY / 4,
-          getDrawingHorizontalLine: (_) => FlLine(color: gridColor, strokeWidth: 1),
+          getDrawingHorizontalLine: (_) =>
+              FlLine(color: gridColor, strokeWidth: 1),
         ),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -147,7 +165,10 @@ class _Chart extends StatelessWidget {
               interval: maxY / 4 == 0 ? 1 : maxY / 4,
               getTitlesWidget: (value, meta) => Text(
                 _compact(value),
-                style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),
@@ -158,14 +179,19 @@ class _Chart extends StatelessWidget {
               interval: 1,
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
-                if (index < 0 || index >= series.length) return const SizedBox.shrink();
+                if (index < 0 || index >= series.length) {
+                  return const SizedBox.shrink();
+                }
                 if (index % labelEvery != 0) return const SizedBox.shrink();
                 final day = series[index].day;
                 return Padding(
-                  padding: const EdgeInsets.only(top: 6),
+                  padding: const EdgeInsets.only(top: AppDimens.spacing6),
                   child: Text(
                     '${day.day}/${day.month}',
-                    style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 );
               },
@@ -203,12 +229,17 @@ class _Chart extends StatelessWidget {
 
   LineChartBarData _series(List<double> values, Color color) {
     return LineChartBarData(
-      spots: [for (var i = 0; i < values.length; i++) FlSpot(i.toDouble(), values[i])],
+      spots: [
+        for (var i = 0; i < values.length; i++) FlSpot(i.toDouble(), values[i]),
+      ],
       isCurved: false,
       color: color,
       barWidth: 2,
       dotData: const FlDotData(show: false),
-      belowBarData: BarAreaData(show: true, color: color.withValues(alpha: 0.08)),
+      belowBarData: BarAreaData(
+        show: true,
+        color: color.withValues(alpha: 0.08),
+      ),
     );
   }
 }

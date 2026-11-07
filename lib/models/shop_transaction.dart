@@ -48,7 +48,9 @@ class ShopTransaction {
       amount: (map[amountKey] as num?)?.toDouble() ?? 0,
       createdAt: DateTime.tryParse(map['created_at'] as String? ?? ''),
       note: _pickNote(map),
-      itemCount: type == ShopTransactionType.sale && items is List ? items.length : null,
+      itemCount: type == ShopTransactionType.sale && items is List
+          ? items.length
+          : null,
     );
   }
 }

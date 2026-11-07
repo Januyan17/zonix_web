@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/app_dimens.dart';
+
 /// A labeled, copyable value row — used for showing generated credentials
 /// (shop code, username, password) with an optional show/hide toggle for
 /// sensitive values like passwords.
@@ -29,14 +31,21 @@ class _CredentialRowState extends State<CredentialRow> {
     final displayValue = _hidden ? '•' * widget.value.length : widget.value;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      padding: const EdgeInsets.symmetric(
+        vertical: AppDimens.spacing8,
+        horizontal: AppDimens.spacing8,
+      ),
       child: Row(
         children: [
           SizedBox(
-            width: 90,
+            width: AppDimens.labelColumnWidth,
             child: Text(
               widget.label,
-              style: TextStyle(fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant, fontSize: 13),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+                fontSize: AppDimens.fontBody,
+              ),
             ),
           ),
           Expanded(
@@ -47,18 +56,26 @@ class _CredentialRowState extends State<CredentialRow> {
           ),
           if (widget.isSensitive)
             IconButton(
-              icon: Icon(_hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
+              icon: Icon(
+                _hidden
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                size: AppDimens.iconLg,
+              ),
               tooltip: _hidden ? 'Show' : 'Hide',
               onPressed: () => setState(() => _hidden = !_hidden),
             ),
           IconButton(
-            icon: const Icon(Icons.copy_rounded, size: 18),
+            icon: const Icon(Icons.copy_rounded, size: AppDimens.iconLg),
             tooltip: 'Copy',
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: widget.value));
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${widget.label} copied'), duration: const Duration(seconds: 1)),
+                  SnackBar(
+                    content: Text('${widget.label} copied'),
+                    duration: const Duration(seconds: 1),
+                  ),
                 );
               }
             },

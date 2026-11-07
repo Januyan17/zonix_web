@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/shop_service.dart';
+import '../theme/app_dimens.dart';
 import '../utils/error_utils.dart';
 import '../widgets/auth_shell.dart';
 import 'shop_list_screen.dart';
@@ -95,15 +96,20 @@ class _LoginScreenState extends State<LoginScreen> {
           validator: (v) =>
               (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppDimens.spacing14),
         TextFormField(
           controller: _passwordController,
           decoration: InputDecoration(
             labelText: 'Password',
             prefixIcon: const Icon(Icons.lock_outline),
             suffixIcon: IconButton(
-              icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+              ),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
           obscureText: _obscurePassword,
@@ -111,17 +117,20 @@ class _LoginScreenState extends State<LoginScreen> {
           onFieldSubmitted: (_) => _submit(),
         ),
         if (_error != null) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: AppDimens.spacing16),
           AuthErrorBanner(message: _error!),
         ],
-        const SizedBox(height: 24),
+        const SizedBox(height: AppDimens.spacing24),
         FilledButton(
           onPressed: _isSubmitting ? null : _submit,
           child: _isSubmitting
               ? const SizedBox(
                   height: 18,
                   width: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Text('Log in'),
         ),

@@ -14,7 +14,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await Supabase.initialize(url: SupabaseOptions.url, publishableKey: SupabaseOptions.anonKey);
+  await Supabase.initialize(
+    url: SupabaseOptions.url,
+    publishableKey: SupabaseOptions.anonKey,
+  );
   runApp(const ZonixAdminApp());
 }
 
@@ -27,10 +30,7 @@ class ZonixAdminApp extends StatelessWidget {
       title: 'Zonix Admin',
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(),
-      home: AuthGate(
-        authService: AuthService(),
-        shopService: ShopService(),
-      ),
+      home: AuthGate(authService: AuthService(), shopService: ShopService()),
     );
   }
 
@@ -72,14 +72,19 @@ class ZonixAdminApp extends StatelessWidget {
         color: colorScheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
         ),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -105,14 +110,18 @@ class ZonixAdminApp extends StatelessWidget {
           // not from this. An infinite minimum width crashes any button
           // placed in an unbounded context, like a dialog's action Row.
           minimumSize: const Size(64, 48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(64, 48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
       chipTheme: ChipThemeData(
@@ -121,7 +130,9 @@ class ZonixAdminApp extends StatelessWidget {
         labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       ),
-      dividerTheme: DividerThemeData(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      dividerTheme: DividerThemeData(
+        color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+      ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),

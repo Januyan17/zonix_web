@@ -14,6 +14,35 @@ class Shop {
   /// mobile app. Null means unlimited.
   final int? productLimit;
 
+  /// Whether the mobile/POS app shows a "Delete" option for staff members.
+  /// Defaults to false when unset on the document.
+  final bool staffDeleteEnabled;
+
+  /// Max number of devices a staff (non-owner) account can be signed in on
+  /// at once; the mobile app signs out the oldest session(s) once this is
+  /// exceeded on a new device. Defaults to 1 when unset on the document.
+  final int maxActiveDevicesStaff;
+
+  /// Same as [maxActiveDevicesStaff] but for the owner/admin account only.
+  /// Defaults to 1 when unset on the document.
+  final int maxActiveDevicesOwner;
+
+  /// Full site address, scheme optional. Null when the shop has no website.
+  final String? website;
+
+  /// Facebook profile name, e.g. "zonixpos" — not a URL, though a pasted URL
+  /// is accepted too. Same for [instagram] and [tiktok].
+  final String? facebook;
+
+  final String? instagram;
+
+  final String? tiktok;
+
+  /// Whether the shop owner may edit the four link fields above from the
+  /// mobile app. Defaults to false when unset on the document; only a
+  /// platform admin can ever change it.
+  final bool shopLinksEnabled;
+
   const Shop({
     required this.id,
     required this.name,
@@ -23,6 +52,14 @@ class Shop {
     required this.createdAt,
     this.staffLimit,
     this.productLimit,
+    this.staffDeleteEnabled = false,
+    this.maxActiveDevicesStaff = 1,
+    this.maxActiveDevicesOwner = 1,
+    this.website,
+    this.facebook,
+    this.instagram,
+    this.tiktok,
+    this.shopLinksEnabled = false,
   });
 
   factory Shop.fromMap(Map<String, dynamic> map) {
@@ -35,6 +72,16 @@ class Shop {
       createdAt: map['created_at'] as String,
       staffLimit: (map['staff_limit'] as num?)?.toInt(),
       productLimit: (map['product_limit'] as num?)?.toInt(),
+      staffDeleteEnabled: map['staff_delete_enabled'] as bool? ?? false,
+      maxActiveDevicesStaff:
+          (map['max_active_devices_staff'] as num?)?.toInt() ?? 1,
+      maxActiveDevicesOwner:
+          (map['max_active_devices_owner'] as num?)?.toInt() ?? 1,
+      website: map['website'] as String?,
+      facebook: map['facebook'] as String?,
+      instagram: map['instagram'] as String?,
+      tiktok: map['tiktok'] as String?,
+      shopLinksEnabled: map['shop_links_enabled'] as bool? ?? false,
     );
   }
 
@@ -48,6 +95,14 @@ class Shop {
       'created_at': createdAt,
       'staff_limit': staffLimit,
       'product_limit': productLimit,
+      'staff_delete_enabled': staffDeleteEnabled,
+      'max_active_devices_staff': maxActiveDevicesStaff,
+      'max_active_devices_owner': maxActiveDevicesOwner,
+      'website': website,
+      'facebook': facebook,
+      'instagram': instagram,
+      'tiktok': tiktok,
+      'shop_links_enabled': shopLinksEnabled,
     };
   }
 }
