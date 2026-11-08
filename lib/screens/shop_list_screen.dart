@@ -22,7 +22,7 @@ class _ShopEntry {
   final Shop? shop;
 }
 
-class ShopListScreen extends StatelessWidget {
+class ShopListScreen extends StatefulWidget {
   const ShopListScreen({
     super.key,
     required this.authService,
@@ -31,6 +31,57 @@ class ShopListScreen extends StatelessWidget {
 
   final AuthService authService;
   final ShopService shopService;
+
+  @override
+  State<ShopListScreen> createState() => _ShopListScreenState();
+}
+
+class _ShopListScreenState extends State<ShopListScreen> {
+  AuthService get authService => widget.authService;
+  ShopService get shopService => widget.shopService;
+
+  late final Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _indexStream = shopService.watchShopIndex();
+
+  /// Shop documents already fetched, by slug. Each is read once and kept,
+  /// instead of re-reading every shop on every rebuild of the page (a
+  /// window resize alone used to cost one read per shop).
+  final Map<String, Shop?> _shops = {};
+  final Set<String> _inFlight = {};
+
+  /// Fetches the shops in [slugs] that aren't loaded or loading yet. Safe
+  /// to call from build: it never calls setState synchronously.
+  void _ensureLoaded(Iterable<String> slugs) {
+    for (final slug in slugs) {
+      if (_shops.containsKey(slug) || _inFlight.contains(slug)) continue;
+      _fetch(slug);
+    }
+  }
+
+  Future<void> _fetch(String slug) async {
+    _inFlight.add(slug);
+    try {
+      final shop = await shopService.getShop(slug);
+      if (mounted) setState(() => _shops[slug] = shop);
+    } catch (_) {
+      // Left unloaded; the tile keeps its placeholder, as it did before
+      // when the batch read failed.
+    } finally {
+      _inFlight.remove(slug);
+    }
+  }
+
+  /// The detail page can toggle a shop's status or delete it, so the one
+  /// shop that was just opened is re-read on return — a single read rather
+  /// than the whole list.
+  Future<void> _openShop(String slug) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ShopDetailScreen(slug: slug, shopService: shopService),
+      ),
+    );
+    if (mounted) _fetch(slug);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +101,7 @@ class ShopListScreen extends StatelessWidget {
         },
       ),
       body: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
-        stream: shopService.watchShopIndex(),
+        stream: _indexStream,
         builder: (context, indexSnapshot) {
           if (indexSnapshot.hasError) {
             return Center(child: Text('Error: ${indexSnapshot.error}'));
@@ -65,75 +116,66 @@ class ShopListScreen extends StatelessWidget {
             );
           }
 
-          return FutureBuilder<List<Shop?>>(
-            future: Future.wait(docs.map((d) => shopService.getShop(d.id))),
-            builder: (context, shopsSnapshot) {
-              final shops = shopsSnapshot.data;
-              final entries = [
-                for (var i = 0; i < docs.length; i++)
-                  _ShopEntry(
-                    slug: docs[i].id,
-                    indexedName:
-                        docs[i].data()['name'] as String? ?? docs[i].id,
-                    shop: shops?[i],
-                  ),
-              ];
+          _ensureLoaded(docs.map((d) => d.id));
+          final allLoaded = docs.every((d) => _shops.containsKey(d.id));
+          final entries = [
+            for (final doc in docs)
+              _ShopEntry(
+                slug: doc.id,
+                indexedName: doc.data()['name'] as String? ?? doc.id,
+                shop: _shops[doc.id],
+              ),
+          ];
 
-              return _DashboardScaffold(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = constraints.maxWidth;
-                    final columns = width >= 1300 ? 3 : (width >= 820 ? 2 : 1);
-                    return CustomScrollView(
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: _SummaryRow(
-                            entries: entries,
-                            loading: shops == null,
-                          ),
+          return _DashboardScaffold(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final columns = width >= 1300 ? 3 : (width >= 820 ? 2 : 1);
+                return CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _SummaryRow(entries: entries, loading: !allLoaded),
+                    ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          0,
+                          AppDimens.spacing24,
+                          0,
+                          AppDimens.spacing12,
                         ),
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              0,
-                              AppDimens.spacing24,
-                              0,
-                              AppDimens.spacing12,
-                            ),
-                            child: Text(
-                              '${entries.length} shop${entries.length == 1 ? '' : 's'}',
-                              style: Theme.of(context).textTheme.labelLarge
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ),
-                        ),
-                        SliverGrid(
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: columns,
-                                mainAxisExtent: 82,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
+                        child: Text(
+                          '${entries.length} shop${entries.length == 1 ? '' : 's'}',
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) => _ShopTile(
-                              entry: entries[index],
-                              shopService: shopService,
-                            ),
-                            childCount: entries.length,
-                          ),
                         ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 96)),
-                      ],
-                    );
-                  },
-                ),
-              );
-            },
+                      ),
+                    ),
+                    SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        mainAxisExtent: 82,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _ShopTile(
+                          entry: entries[index],
+                          onOpen: () => _openShop(entries[index].slug),
+                        ),
+                        childCount: entries.length,
+                      ),
+                    ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 96)),
+                  ],
+                );
+              },
+            ),
           );
         },
       ),
@@ -351,10 +393,10 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _ShopTile extends StatelessWidget {
-  const _ShopTile({required this.entry, required this.shopService});
+  const _ShopTile({required this.entry, required this.onOpen});
 
   final _ShopEntry entry;
-  final ShopService shopService;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -366,14 +408,7 @@ class _ShopTile extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) =>
-                  ShopDetailScreen(slug: entry.slug, shopService: shopService),
-            ),
-          );
-        },
+        onTap: onOpen,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppDimens.spacing16,

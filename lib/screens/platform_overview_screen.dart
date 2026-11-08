@@ -66,10 +66,35 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
   /// small; the totals are filtered client-side either way.
   static const _volumeDays = 30;
 
+  /// Switching tabs rebuilds this page from scratch (the shell uses
+  /// pushReplacement), which used to re-scan every shop on every visit.
+  /// The last results are kept for the session instead; the header's
+  /// loaded-at time says how old they are, and refresh always re-reads.
+  /// Only the health scan is reused within [_healthMaxAge] — the update
+  /// gate is a single document and is re-read on each visit, since the App
+  /// version page may just have changed it.
+  static const _healthMaxAge = Duration(minutes: 10);
+  static PlatformHealth? _cachedHealth;
+  static PlatformVolume? _cachedVolume;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _volume = _cachedVolume;
+    final cached = _cachedHealth;
+    if (cached != null &&
+        DateTime.now().difference(cached.loadedAt) < _healthMaxAge) {
+      _health = cached;
+      _loading = false;
+      _loadVersionConfig();
+    } else {
+      _load();
+    }
+  }
+
+  Future<void> _loadVersionConfig() async {
+    final config = await _appVersion.read().catchError((_) => null);
+    if (mounted) setState(() => _versionConfig = config);
   }
 
   Future<void> _load() async {
@@ -86,6 +111,7 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
         _appVersion.read().catchError((_) => null),
       ]);
       if (!mounted) return;
+      _cachedHealth = results[0] as PlatformHealth;
       setState(() {
         _health = results[0] as PlatformHealth;
         _versionConfig = results[1] as AppVersionConfig?;
@@ -120,6 +146,7 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
           });
         },
       );
+      _cachedVolume = volume;
       if (!mounted) return;
       setState(() => _volume = volume);
     } catch (e) {

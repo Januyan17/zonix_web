@@ -4,18 +4,20 @@ import '../models/platform_stats.dart';
 import '../models/shop.dart';
 import '../models/shop_stats.dart';
 import '../utils/platform_aggregate.dart';
+import '../utils/shop_activity_aggregate.dart';
 
 /// Cross-shop analytics for the platform overview page.
 ///
 /// Split into two deliberately different tiers, because their read costs
 /// differ by orders of magnitude:
 ///
-///  * [loadHealth] reads each shop's document plus its users and products
-///    subcollections and the single most recent sale. Small, bounded, and
-///    safe to run whenever the page opens.
-///  * [computeVolume] reads every sale, expense, and income document of
-///    every shop. That grows without limit as history accumulates, so it is
-///    never run automatically — the page puts it behind an explicit button.
+///  * [loadHealth] reads each shop's document, its users subcollection, a
+///    count of its products and the few most recent sales. Small, bounded,
+///    and safe to run whenever the page opens.
+///  * [computeVolume] reads the sale, expense, and income documents of
+///    every shop inside the requested window. That still grows with
+///    activity, so it is never run automatically — the page puts it behind
+///    an explicit button.
 ///
 /// Nothing here writes. The existing ShopService is used read-only for the
 /// shop index and is otherwise untouched.
@@ -35,6 +37,23 @@ class PlatformStatsService {
 
   DocumentReference<Map<String, dynamic>> _shopRef(String slug) =>
       _firestore.collection('shops').doc(slug);
+
+  /// Live (not soft-deleted) products in a shop, counted server-side. A
+  /// count aggregation is billed one read per 1000 documents counted,
+  /// where fetching the catalog was one read per product. Matches the old
+  /// client-side `is_deleted != true` test exactly: everything minus the
+  /// docs whose flag is literally true (a bare `isNotEqualTo` query would
+  /// also drop docs that lack the field).
+  static Future<int> _liveProductCount(
+    DocumentReference<Map<String, dynamic>> shopRef,
+  ) async {
+    final products = shopRef.collection('products');
+    final counts = await Future.wait([
+      products.count().get(),
+      products.where('is_deleted', isEqualTo: true).count().get(),
+    ]);
+    return (counts[0].count ?? 0) - (counts[1].count ?? 0);
+  }
 
   /// Runs [task] over [items] at most [_concurrency] at a time, preserving
   /// input order in the result.
@@ -62,8 +81,9 @@ class PlatformStatsService {
         .toList();
   }
 
-  /// Everything the overview page shows on entry. Cost is roughly four
-  /// small reads per shop, independent of how much sales history exists.
+  /// Everything the overview page shows on entry. Cost per shop is one read
+  /// per user plus a handful more, independent of catalog size or of how
+  /// much sales history exists.
   Future<PlatformHealth> loadHealth({DateTime? now}) async {
     final index = await _readIndex();
     final shops = await _mapBounded(index, (entry) => _loadShopHealth(entry));
@@ -72,10 +92,7 @@ class PlatformStatsService {
     return PlatformHealth(
       shops: present,
       growth: buildGrowthSeries(
-        present
-            .map((s) => s.createdAt)
-            .whereType<DateTime>()
-            .toList(),
+        present.map((s) => s.createdAt).whereType<DateTime>().toList(),
         now: now,
       ),
       features: _summarizeFeatures(present),
@@ -84,12 +101,14 @@ class PlatformStatsService {
     );
   }
 
-  Future<ShopHealth?> _loadShopHealth(({String slug, String name}) entry) async {
+  Future<ShopHealth?> _loadShopHealth(
+    ({String slug, String name}) entry,
+  ) async {
     final ref = _shopRef(entry.slug);
     final results = await Future.wait([
       ref.get(),
       ref.collection('users').get(),
-      ref.collection('products').get(),
+      _liveProductCount(ref),
       // Only the newest few sales, not the collection. A soft-deleted sale
       // could be the newest, so take a small window and pick the first
       // that survives rather than a bare limit(1).
@@ -105,7 +124,7 @@ class PlatformStatsService {
     final shop = Shop.fromMap(shopDoc.data()!);
 
     final userDocs = (results[1] as QuerySnapshot<Map<String, dynamic>>).docs;
-    final productDocs = (results[2] as QuerySnapshot<Map<String, dynamic>>).docs;
+    final productCount = results[2] as int;
     final saleDocs = (results[3] as QuerySnapshot<Map<String, dynamic>>).docs;
 
     var staffCount = 0;
@@ -126,10 +145,6 @@ class PlatformStatsService {
         devicesByBuild[build] = (devicesByBuild[build] ?? 0) + 1;
       }
     }
-
-    final productCount = productDocs
-        .where((d) => d.data()['is_deleted'] != true)
-        .length;
 
     DateTime? lastSaleAt;
     for (final doc in saleDocs) {
@@ -171,30 +186,42 @@ class PlatformStatsService {
     );
   }
 
-  /// The expensive tier: every transaction document of every shop, in one
-  /// pass per shop. Only ever called from an explicit user action.
+  /// The expensive tier: every transaction document of every shop within
+  /// [range], in one pass per shop. Only ever called from an explicit user
+  /// action.
+  ///
+  /// The queries are bounded with [activityQueryBounds] — the same coarse,
+  /// day-of-slack window the shop detail page uses — so history outside
+  /// the range never crosses the network. [aggregateShopVolume] still
+  /// filters to the exact days, so the figures are unchanged.
   Future<PlatformVolume> computeVolume({
     required StatsDateRange range,
     void Function(int done, int total)? onProgress,
   }) async {
     final index = await _readIndex();
+    final bounds = activityQueryBounds(from: range.start, to: range.end);
     var done = 0;
 
     final results = await _mapBounded(index, (entry) async {
       final ref = _shopRef(entry.slug);
+
+      Future<QuerySnapshot<Map<String, dynamic>>> scoped(String collection) {
+        return ref
+            .collection(collection)
+            .where('created_at', isGreaterThanOrEqualTo: bounds.startAt)
+            .where('created_at', isLessThan: bounds.endBefore)
+            .get();
+      }
+
       final snapshots = await Future.wait([
-        ref.collection('sales').get(),
-        ref.collection('expenses').get(),
-        ref.collection('additional_income').get(),
-        ref.collection('products').get(),
+        scoped('sales'),
+        scoped('expenses'),
+        scoped('additional_income'),
       ]);
+      final productCount = await _liveProductCount(ref);
 
       List<Map<String, dynamic>> data(int i) =>
           snapshots[i].docs.map((d) => d.data()).toList();
-
-      final productCount = snapshots[3].docs
-          .where((d) => d.data()['is_deleted'] != true)
-          .length;
 
       final aggregate = aggregateShopVolume(
         sales: data(0),
