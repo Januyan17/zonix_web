@@ -19,3 +19,11 @@ String formatRelativeDate(DateTime d) {
   }
   return formatShortDate(d);
 }
+
+/// [formatShortDate] plus a 24-hour local time, e.g. "8/11/2026 14:05".
+String formatShortDateTime(DateTime d) {
+  final local = d.toLocal();
+  final hh = local.hour.toString().padLeft(2, '0');
+  final mm = local.minute.toString().padLeft(2, '0');
+  return '${formatShortDate(local)} $hh:$mm';
+}

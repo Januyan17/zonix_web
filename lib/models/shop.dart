@@ -1,3 +1,5 @@
+import 'shop_trial.dart';
+
 class Shop {
   final String id;
   final String name;
@@ -43,6 +45,11 @@ class Shop {
   /// platform admin can ever change it.
   final bool shopLinksEnabled;
 
+  /// Free-trial fields (trial_*). Read-only here: they're written only by
+  /// the dedicated ShopService trial methods, and deliberately left out of
+  /// [toMap] so shop creation never writes a trial.
+  final ShopTrial trial;
+
   const Shop({
     required this.id,
     required this.name,
@@ -60,6 +67,7 @@ class Shop {
     this.instagram,
     this.tiktok,
     this.shopLinksEnabled = false,
+    this.trial = const ShopTrial(),
   });
 
   factory Shop.fromMap(Map<String, dynamic> map) {
@@ -82,6 +90,7 @@ class Shop {
       instagram: map['instagram'] as String?,
       tiktok: map['tiktok'] as String?,
       shopLinksEnabled: map['shop_links_enabled'] as bool? ?? false,
+      trial: ShopTrial.fromMap(map),
     );
   }
 

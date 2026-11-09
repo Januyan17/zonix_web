@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/product.dart';
 import '../models/shop.dart';
 import '../models/shop_activity.dart';
+import '../models/shop_trial.dart';
 import '../models/shop_user.dart';
 import '../models/user_session.dart';
 import '../utils/shop_activity_aggregate.dart';
@@ -264,6 +265,65 @@ class ShopService {
       'instagram': instagram,
       'tiktok': tiktok,
       'shop_links_enabled': linksEnabled,
+    });
+  }
+
+  /// Starts a fresh 7-day free trial. The start time is the server's clock,
+  /// never the admin's, and any earlier "extend trial" end date is removed
+  /// so a re-enable always counts a full [kDefaultTrialDays] from now.
+  /// The mobile app locks itself once the trial end passes.
+  Future<void> startTrial(String slug) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'trial_enabled': true,
+      'trial_started_at': FieldValue.serverTimestamp(),
+      'trial_days': kDefaultTrialDays,
+      'trial_ends_at': FieldValue.delete(),
+    });
+  }
+
+  /// Turns the trial off (the shop has paid), unlocking the mobile app
+  /// live. The date fields are left in place as history.
+  Future<void> endTrial(String slug) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'trial_enabled': false,
+    });
+  }
+
+  /// The lock popup's custom text and "Contact us to pay" target. A blank
+  /// value removes the field, so the app falls back to its default text.
+  Future<void> setTrialDetails(
+    String slug, {
+    required String? message,
+    required String? contact,
+  }) async {
+    Object valueOrDelete(String? v) {
+      final trimmed = v?.trim() ?? '';
+      return trimmed.isEmpty ? FieldValue.delete() : trimmed;
+    }
+
+    await _firestore.collection('shops').doc(slug).update({
+      'trial_message': valueOrDelete(message),
+      'trial_contact': valueOrDelete(contact),
+    });
+  }
+
+  /// Pushes the trial end out by [days]: from the current computed end, or
+  /// from now if the trial has already ended. Read and written in one
+  /// transaction so the base is the document's latest state, not whatever
+  /// the admin's page last loaded. Returns the new end.
+  Future<DateTime> extendTrial(String slug, int days) async {
+    final ref = _firestore.collection('shops').doc(slug);
+    return _firestore.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      final trial = ShopTrial.fromMap(snapshot.data() ?? const {});
+      final now = DateTime.now();
+      final currentEnd = trial.endsAt;
+      final base = currentEnd != null && currentEnd.isAfter(now)
+          ? currentEnd
+          : now;
+      final newEnd = base.add(Duration(days: days));
+      tx.update(ref, {'trial_ends_at': Timestamp.fromDate(newEnd)});
+      return newEnd;
     });
   }
 

@@ -19,10 +19,12 @@ import 'widgets/limit_row_and_dialog.dart';
 import 'widgets/product_dialogs.dart';
 import 'widgets/product_performance_card.dart';
 import 'widgets/product_widgets.dart';
+import 'widgets/recent_device_logins_section.dart';
 import 'widgets/sales_rhythm_card.dart';
 import 'widgets/shop_links_section.dart';
 import 'widgets/stat_widgets.dart';
 import 'widgets/transactions_modal.dart';
+import 'widgets/trial_section.dart';
 import 'widgets/user_dialogs.dart';
 import 'widgets/user_widgets.dart';
 
@@ -472,6 +474,82 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save links: ${describeError(e)}')),
+        );
+      }
+    }
+  }
+
+  /// Starts or ends the shop's free trial. The mobile app watches this
+  /// document live: ending the trial unlocks a locked app within seconds.
+  Future<void> _toggleTrial(bool enable) async {
+    try {
+      if (enable) {
+        await widget.shopService.startTrial(widget.slug);
+      } else {
+        await widget.shopService.endTrial(widget.slug);
+      }
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              enable ? 'Free trial started' : 'Trial turned off, app unlocked',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update trial: ${describeError(e)}'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveTrialDetails(TrialDetailsResult details) async {
+    try {
+      await widget.shopService.setTrialDetails(
+        widget.slug,
+        message: details.message,
+        contact: details.contact,
+      );
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Trial details saved')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save trial details: ${describeError(e)}'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _extendTrial(int days) async {
+    try {
+      final newEnd = await widget.shopService.extendTrial(widget.slug, days);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Trial extended to ${formatShortDateTime(newEnd)}'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to extend trial: ${describeError(e)}'),
+          ),
         );
       }
     }
@@ -963,6 +1041,29 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                       Row(
                         children: [
                           Icon(
+                            Icons.hourglass_top_rounded,
+                            size: 18,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Free trial',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      TrialSection(
+                        shop: _shop!,
+                        onToggle: _toggleTrial,
+                        onSaveDetails: _saveTrialDetails,
+                        onExtend: _extendTrial,
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Icon(
                             Icons.qr_code_2_outlined,
                             size: 18,
                             color: colorScheme.primary,
@@ -1172,6 +1273,11 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                           onViewDevices: _viewDevices,
                         ),
                       ],
+                      const SizedBox(height: 24),
+                      RecentDeviceLoginsSection(
+                        shopId: widget.slug,
+                        shopService: widget.shopService,
+                      ),
                       const SizedBox(height: 24),
                       Row(
                         children: [

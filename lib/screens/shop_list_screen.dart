@@ -7,6 +7,7 @@ import '../services/shop_service.dart';
 import '../theme/app_dimens.dart';
 import '../utils/avatar_color.dart';
 import '../widgets/admin_shell.dart';
+import '../widgets/trial_status_badge.dart';
 import 'create_shop_screen.dart';
 import 'shop_detail/shop_detail_screen.dart';
 
@@ -453,6 +454,12 @@ class _ShopTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppDimens.spacing8),
+              // Compact trial chip only for shops on a trial: "No trial" on
+              // every tile would just be noise in the grid.
+              if (shop != null && shop.trial.trialEnabled) ...[
+                TrialStatusBadge(trial: shop.trial, compact: true),
+                const SizedBox(width: AppDimens.spacing4),
+              ],
               _StatusChip(shop: shop),
               const SizedBox(width: AppDimens.spacing4),
               Icon(
