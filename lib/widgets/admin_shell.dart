@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../screens/app_version_screen.dart';
 import '../screens/auth_gate.dart';
 import '../screens/device_logins_screen.dart';
+import '../screens/history_requests_screen.dart';
 import '../screens/platform_overview_screen.dart';
 import '../screens/shop_list_screen.dart';
 import '../services/auth_service.dart';
+import '../services/history_request_service.dart';
 import '../services/shop_service.dart';
 import '../theme/app_dimens.dart';
 import 'zonix_badge.dart';
@@ -16,7 +18,7 @@ const double _railExtendedBreakpoint = 1200;
 /// The top-level pages the nav rail switches between. Each one wraps itself
 /// in an [AdminShell] and names itself here, so the rail highlights the
 /// right entry without the shell having to inspect the route.
-enum AdminPage { shops, overview, appVersion, deviceLogins }
+enum AdminPage { shops, overview, appVersion, deviceLogins, historyRequests }
 
 /// Responsive admin dashboard frame: a persistent side nav rail on wide
 /// screens, a drawer + app bar on narrow/mobile screens. Wraps the
@@ -73,6 +75,10 @@ class AdminShell extends StatelessWidget {
             shopService: shopService,
           ),
           AdminPage.deviceLogins => DeviceLoginsScreen(
+            authService: authService,
+            shopService: shopService,
+          ),
+          AdminPage.historyRequests => HistoryRequestsScreen(
             authService: authService,
             shopService: shopService,
           ),
@@ -165,6 +171,14 @@ class _SideNav extends StatelessWidget {
   }
 }
 
+/// The pending-requests bubble text: null (no bubble) at 0, and "50+" at
+/// the listener's limit, since it can't see past it.
+String? _pendingLabel(int count) {
+  if (count <= 0) return null;
+  const limit = HistoryRequestService.pendingLimit;
+  return count >= limit ? '$limit+' : '$count';
+}
+
 class _NavContent extends StatelessWidget {
   const _NavContent({
     this.extended = true,
@@ -238,6 +252,19 @@ class _NavContent extends StatelessWidget {
         extended: extended,
         onTap: () => onNavigate(AdminPage.deviceLogins),
       ),
+      // The badge listens to the one shared pending-requests listener, so
+      // rebuilding the shell on every page change doesn't re-subscribe.
+      ListenableBuilder(
+        listenable: PendingHistoryRequests.instance,
+        builder: (context, _) => _NavItem(
+          icon: Icons.manage_history_rounded,
+          label: 'History requests',
+          selected: current == AdminPage.historyRequests,
+          extended: extended,
+          badgeLabel: _pendingLabel(PendingHistoryRequests.instance.count),
+          onTap: () => onNavigate(AdminPage.historyRequests),
+        ),
+      ),
     ];
 
     final logoutItem = Padding(
@@ -272,6 +299,7 @@ class _NavItem extends StatelessWidget {
     required this.extended,
     this.color,
     this.onTap,
+    this.badgeLabel,
   });
 
   final IconData icon;
@@ -280,6 +308,15 @@ class _NavItem extends StatelessWidget {
   final bool extended;
   final Color? color;
   final VoidCallback? onTap;
+
+  /// Shown as a bubble on the icon when non-null.
+  final String? badgeLabel;
+
+  Widget _badged(Widget icon) {
+    final label = badgeLabel;
+    if (label == null) return icon;
+    return Badge(label: Text(label), child: icon);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -307,7 +344,7 @@ class _NavItem extends StatelessWidget {
       child: extended
           ? Row(
               children: [
-                Icon(icon, size: AppDimens.iconXl, color: fg),
+                _badged(Icon(icon, size: AppDimens.iconXl, color: fg)),
                 const SizedBox(width: AppDimens.spacing12),
                 Text(
                   label,
@@ -319,7 +356,7 @@ class _NavItem extends StatelessWidget {
                 ),
               ],
             )
-          : Icon(icon, size: AppDimens.iconXxl, color: fg),
+          : _badged(Icon(icon, size: AppDimens.iconXxl, color: fg)),
     );
 
     return Tooltip(

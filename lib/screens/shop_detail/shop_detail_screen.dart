@@ -14,6 +14,7 @@ import '../../utils/shop_activity_aggregate.dart';
 import '../../widgets/trend_chart.dart';
 import 'widgets/delete_dialogs.dart';
 import 'widgets/filter_row.dart';
+import 'widgets/history_requests_section.dart';
 import 'widgets/info_rows.dart';
 import 'widgets/limit_row_and_dialog.dart';
 import 'widgets/product_dialogs.dart';
@@ -1278,6 +1279,8 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                         shopId: widget.slug,
                         shopService: widget.shopService,
                       ),
+                      const SizedBox(height: 24),
+                      HistoryRequestsSection(shopId: widget.slug),
                       const SizedBox(height: 24),
                       Row(
                         children: [
