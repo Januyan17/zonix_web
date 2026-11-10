@@ -4,9 +4,11 @@ import '../screens/app_version_screen.dart';
 import '../screens/auth_gate.dart';
 import '../screens/device_logins_screen.dart';
 import '../screens/history_requests_screen.dart';
+import '../screens/payments_screen.dart';
 import '../screens/platform_overview_screen.dart';
 import '../screens/shop_list_screen.dart';
 import '../services/auth_service.dart';
+import '../services/billing_service.dart';
 import '../services/history_request_service.dart';
 import '../services/shop_service.dart';
 import '../theme/app_dimens.dart';
@@ -18,7 +20,14 @@ const double _railExtendedBreakpoint = 1200;
 /// The top-level pages the nav rail switches between. Each one wraps itself
 /// in an [AdminShell] and names itself here, so the rail highlights the
 /// right entry without the shell having to inspect the route.
-enum AdminPage { shops, overview, appVersion, deviceLogins, historyRequests }
+enum AdminPage {
+  shops,
+  overview,
+  payments,
+  appVersion,
+  deviceLogins,
+  historyRequests,
+}
 
 /// Responsive admin dashboard frame: a persistent side nav rail on wide
 /// screens, a drawer + app bar on narrow/mobile screens. Wraps the
@@ -67,6 +76,10 @@ class AdminShell extends StatelessWidget {
             shopService: shopService,
           ),
           AdminPage.overview => PlatformOverviewScreen(
+            authService: authService,
+            shopService: shopService,
+          ),
+          AdminPage.payments => PaymentsScreen(
             authService: authService,
             shopService: shopService,
           ),
@@ -171,6 +184,8 @@ class _SideNav extends StatelessWidget {
   }
 }
 
+String? _countLabel(int count) => count <= 0 ? null : '$count';
+
 /// The pending-requests bubble text: null (no bubble) at 0, and "50+" at
 /// the listener's limit, since it can't see past it.
 String? _pendingLabel(int count) {
@@ -237,6 +252,18 @@ class _NavContent extends StatelessWidget {
         selected: current == AdminPage.overview,
         extended: extended,
         onTap: () => onNavigate(AdminPage.overview),
+      ),
+      // Overdue / due-soon shop payments, from one shared listener.
+      ListenableBuilder(
+        listenable: ShopBillingOverview.instance,
+        builder: (context, _) => _NavItem(
+          icon: Icons.payments_outlined,
+          label: 'Payments',
+          selected: current == AdminPage.payments,
+          extended: extended,
+          badgeLabel: _countLabel(ShopBillingOverview.instance.attentionCount),
+          onTap: () => onNavigate(AdminPage.payments),
+        ),
       ),
       _NavItem(
         icon: Icons.system_update_rounded,

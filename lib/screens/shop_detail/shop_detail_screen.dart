@@ -17,6 +17,7 @@ import 'widgets/filter_row.dart';
 import 'widgets/history_requests_section.dart';
 import 'widgets/info_rows.dart';
 import 'widgets/limit_row_and_dialog.dart';
+import 'widgets/payments_tab.dart';
 import 'widgets/product_dialogs.dart';
 import 'widgets/product_performance_card.dart';
 import 'widgets/product_widgets.dart';
@@ -34,10 +35,14 @@ class ShopDetailScreen extends StatefulWidget {
     super.key,
     required this.slug,
     required this.shopService,
+    this.initialTab = 0,
   });
 
   final String slug;
   final ShopService shopService;
+
+  /// 0 = Details, 1 = Payments.
+  final int initialTab;
 
   @override
   State<ShopDetailScreen> createState() => _ShopDetailScreenState();
@@ -890,439 +895,510 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_shop?.name ?? widget.slug),
-        actions: [
-          if (_shop != null)
-            IconButton(
-              icon: Icon(Icons.delete_outline, color: colorScheme.error),
-              tooltip: 'Delete shop',
-              onPressed: _confirmAndDelete,
-            ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _shop == null
-          ? const Center(child: Text('Shop not found.'))
-          : RefreshIndicator(
-              onRefresh: () => Future.wait([_load(), _loadActivity()]),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 900),
-                  child: ListView(
-                    padding: const EdgeInsets.all(20),
-                    children: [
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+    return DefaultTabController(
+      length: 2,
+      initialIndex: widget.initialTab,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_shop?.name ?? widget.slug),
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.storefront_outlined), text: 'Details'),
+              Tab(icon: Icon(Icons.payments_outlined), text: 'Payments'),
+            ],
+          ),
+          actions: [
+            if (_shop != null)
+              IconButton(
+                icon: Icon(Icons.delete_outline, color: colorScheme.error),
+                tooltip: 'Delete shop',
+                onPressed: _confirmAndDelete,
+              ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: TabBarView(
+          children: [
+            _KeepAlive(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(child: Text(_error!))
+                  : _shop == null
+                  ? const Center(child: Text('Shop not found.'))
+                  : RefreshIndicator(
+                      onRefresh: () => Future.wait([_load(), _loadActivity()]),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 900),
+                          child: ListView(
+                            padding: const EdgeInsets.all(20),
                             children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _shop!.name,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .headlineSmall
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w700,
-                                              ),
+                              Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  _shop!.name,
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .headlineSmall
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                CodeChip(code: _shop!.slug),
+                                              ],
+                                            ),
+                                          ),
+                                          ActiveBadge(
+                                            isActive: _shop!.isActive,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 18),
+                                      const Divider(height: 1),
+                                      const SizedBox(height: 14),
+                                      InfoRow(
+                                        icon: Icons.badge_outlined,
+                                        label: 'Owner UID',
+                                        value: _shop!.ownerUid,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      InfoRow(
+                                        icon: Icons.event_outlined,
+                                        label: 'Created',
+                                        value: _shop!.createdAt,
+                                      ),
+                                      const SizedBox(height: 14),
+                                      const Divider(height: 1),
+                                      const SizedBox(height: 10),
+                                      LimitRow(
+                                        icon: Icons.groups_2_outlined,
+                                        label: 'Staff limit',
+                                        unit: 'staff',
+                                        limit: _shop!.staffLimit,
+                                        used: _users
+                                            .where(
+                                              (u) =>
+                                                  u.role == 'staff' &&
+                                                  !u.isDeleted,
+                                            )
+                                            .length,
+                                        onEdit: _editStaffLimit,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Divider(height: 1),
+                                      const SizedBox(height: 10),
+                                      LimitRow(
+                                        icon: Icons.inventory_2_outlined,
+                                        label: 'Product limit',
+                                        unit: 'products',
+                                        limit: _shop!.productLimit,
+                                        used: _stats?.productCount ?? 0,
+                                        onEdit: _editProductLimit,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Divider(height: 1),
+                                      const SizedBox(height: 10),
+                                      SettingValueRow(
+                                        icon: Icons.devices_outlined,
+                                        label: 'Max devices — Staff',
+                                        value:
+                                            '${_shop!.maxActiveDevicesStaff} per user',
+                                        onEdit: _editMaxActiveDevices,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Divider(height: 1),
+                                      const SizedBox(height: 10),
+                                      SettingValueRow(
+                                        icon:
+                                            Icons.admin_panel_settings_outlined,
+                                        label: 'Max devices — Owner/Admin',
+                                        value:
+                                            '${_shop!.maxActiveDevicesOwner} per user',
+                                        onEdit: _editMaxActiveDevices,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Divider(height: 1),
+                                      SwitchListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        title: const Text('Active'),
+                                        subtitle: const Text(
+                                          'Inactive shops are blocked from mobile login',
                                         ),
-                                        const SizedBox(height: 6),
-                                        CodeChip(code: _shop!.slug),
-                                      ],
-                                    ),
+                                        value: _shop!.isActive,
+                                        onChanged: _togglingActive
+                                            ? null
+                                            : (v) => _toggleActive(v),
+                                      ),
+                                      const Divider(height: 1),
+                                      SwitchListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        title: const Text(
+                                          'Allow staff deletion',
+                                        ),
+                                        subtitle: const Text(
+                                          'Shows a Delete option for staff members '
+                                          'in the mobile app',
+                                        ),
+                                        value: _shop!.staffDeleteEnabled,
+                                        onChanged: _togglingStaffDelete
+                                            ? null
+                                            : (v) => _toggleStaffDelete(v),
+                                      ),
+                                    ],
                                   ),
-                                  ActiveBadge(isActive: _shop!.isActive),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.hourglass_top_rounded,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Free trial',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
                                 ],
                               ),
-                              const SizedBox(height: 18),
-                              const Divider(height: 1),
-                              const SizedBox(height: 14),
-                              InfoRow(
-                                icon: Icons.badge_outlined,
-                                label: 'Owner UID',
-                                value: _shop!.ownerUid,
+                              const SizedBox(height: 10),
+                              TrialSection(
+                                shop: _shop!,
+                                onToggle: _toggleTrial,
+                                onSaveDetails: _saveTrialDetails,
+                                onExtend: _extendTrial,
                               ),
-                              const SizedBox(height: 10),
-                              InfoRow(
-                                icon: Icons.event_outlined,
-                                label: 'Created',
-                                value: _shop!.createdAt,
+                              const SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.qr_code_2_outlined,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Shop Links',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  const Spacer(),
+                                  Switch(
+                                    value: _showShopLinks,
+                                    onChanged: (v) =>
+                                        setState(() => _showShopLinks = v),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 14),
-                              const Divider(height: 1),
-                              const SizedBox(height: 10),
-                              LimitRow(
-                                icon: Icons.groups_2_outlined,
-                                label: 'Staff limit',
-                                unit: 'staff',
-                                limit: _shop!.staffLimit,
-                                used: _users
-                                    .where(
-                                      (u) => u.role == 'staff' && !u.isDeleted,
-                                    )
-                                    .length,
-                                onEdit: _editStaffLimit,
-                              ),
-                              const SizedBox(height: 10),
-                              const Divider(height: 1),
-                              const SizedBox(height: 10),
-                              LimitRow(
-                                icon: Icons.inventory_2_outlined,
-                                label: 'Product limit',
-                                unit: 'products',
-                                limit: _shop!.productLimit,
-                                used: _stats?.productCount ?? 0,
-                                onEdit: _editProductLimit,
-                              ),
-                              const SizedBox(height: 10),
-                              const Divider(height: 1),
-                              const SizedBox(height: 10),
-                              SettingValueRow(
-                                icon: Icons.devices_outlined,
-                                label: 'Max devices — Staff',
-                                value:
-                                    '${_shop!.maxActiveDevicesStaff} per user',
-                                onEdit: _editMaxActiveDevices,
-                              ),
-                              const SizedBox(height: 10),
-                              const Divider(height: 1),
-                              const SizedBox(height: 10),
-                              SettingValueRow(
-                                icon: Icons.admin_panel_settings_outlined,
-                                label: 'Max devices — Owner/Admin',
-                                value:
-                                    '${_shop!.maxActiveDevicesOwner} per user',
-                                onEdit: _editMaxActiveDevices,
-                              ),
-                              const SizedBox(height: 10),
-                              const Divider(height: 1),
-                              SwitchListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('Active'),
-                                subtitle: const Text(
-                                  'Inactive shops are blocked from mobile login',
+                              if (_showShopLinks) ...[
+                                const SizedBox(height: 10),
+                                ShopLinksSection(
+                                  shop: _shop!,
+                                  onSave: _saveShopLinks,
                                 ),
-                                value: _shop!.isActive,
-                                onChanged: _togglingActive
-                                    ? null
-                                    : (v) => _toggleActive(v),
+                              ],
+                              const SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.insights_outlined,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Statistics',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                ],
                               ),
-                              const Divider(height: 1),
-                              SwitchListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('Allow staff deletion'),
-                                subtitle: const Text(
-                                  'Shows a Delete option for staff members '
-                                  'in the mobile app',
+                              const SizedBox(height: 10),
+                              FilterRow<_DateFilter>(
+                                selected: _filter,
+                                onSelect: _selectFilter,
+                                options: [
+                                  const FilterOption(
+                                    value: _DateFilter.day,
+                                    label: 'Daily',
+                                  ),
+                                  const FilterOption(
+                                    value: _DateFilter.week,
+                                    label: 'Weekly',
+                                  ),
+                                  const FilterOption(
+                                    value: _DateFilter.month,
+                                    label: 'Monthly',
+                                  ),
+                                  const FilterOption(
+                                    value: _DateFilter.allTime,
+                                    label: 'All time',
+                                  ),
+                                  FilterOption(
+                                    value: _DateFilter.custom,
+                                    label:
+                                        _filter == _DateFilter.custom &&
+                                            _customRange != null
+                                        ? '${formatShortDate(_customRange!.start)} - ${formatShortDate(_customRange!.end)}'
+                                        : 'Custom range',
+                                    avatar: (_) => const Icon(
+                                      Icons.date_range_outlined,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              StatsSection(
+                                loading: _statsLoading,
+                                stats: _stats,
+                                comparison: _comparison,
+                                voids: _voids,
+                              ),
+                              if (_comparison != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Arrows compare with the previous '
+                                  '${_comparison!.previousRange.dayCount} day'
+                                  '${_comparison!.previousRange.dayCount == 1 ? '' : 's'} '
+                                  '(${formatShortDate(_comparison!.previousRange.start)}'
+                                  ' - '
+                                  '${formatShortDate(_comparison!.previousRange.end)}).',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 11.5,
+                                  ),
                                 ),
-                                value: _shop!.staffDeleteEnabled,
-                                onChanged: _togglingStaffDelete
-                                    ? null
-                                    : (v) => _toggleStaffDelete(v),
+                              ],
+                              const SizedBox(height: 16),
+                              TrendChart(
+                                loading: _seriesLoading,
+                                series: _dailySeries,
+                                rangeLabel: _resolveChartWindow().$3,
                               ),
+                              const SizedBox(height: 16),
+                              SalesRhythmCard(
+                                loading: _statsLoading,
+                                hours: _hours,
+                                weekdays: _weekdays,
+                                rangeLabel: _filterLabel(),
+                                showWeekdays: _filter != _DateFilter.day,
+                              ),
+                              const SizedBox(height: 16),
+                              ProductPerformanceCard(
+                                loading: _statsLoading,
+                                performance: _performance,
+                                deadStock: _deadStock,
+                                rangeLabel: _filterLabel(),
+                              ),
+                              const SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.receipt_long_outlined,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Transactions',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  const Spacer(),
+                                  Switch(
+                                    value: _showTransactions,
+                                    onChanged: (v) {
+                                      setState(() => _showTransactions = v);
+                                      if (v) _openTransactionsModal();
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'View sales, expenses, and additional income for this shop.',
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.group_outlined,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Users (${_users.length})',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  const Spacer(),
+                                  TextButton.icon(
+                                    onPressed: _addUser,
+                                    icon: const Icon(
+                                      Icons.person_add_alt_1_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Add user'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              if (_users.isEmpty)
+                                Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Text(
+                                      'No users yet.',
+                                      style: TextStyle(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else ...[
+                                ActiveUserCountsRow(users: _users),
+                                const SizedBox(height: 14),
+                                UserGroup(
+                                  label: 'Owners',
+                                  users: _users
+                                      .where((u) => u.role == 'owner')
+                                      .toList(),
+                                  onReissueLogin: _reissueLogin,
+                                  onEdit: _editUser,
+                                  onDelete: _deleteUser,
+                                  onViewDevices: _viewDevices,
+                                ),
+                                const SizedBox(height: 16),
+                                UserGroup(
+                                  label: 'Staff',
+                                  users: _users
+                                      .where((u) => u.role != 'owner')
+                                      .toList(),
+                                  onReissueLogin: _reissueLogin,
+                                  onEdit: _editUser,
+                                  onDelete: _deleteUser,
+                                  onViewDevices: _viewDevices,
+                                ),
+                              ],
+                              const SizedBox(height: 24),
+                              RecentDeviceLoginsSection(
+                                shopId: widget.slug,
+                                shopService: widget.shopService,
+                              ),
+                              const SizedBox(height: 24),
+                              HistoryRequestsSection(shopId: widget.slug),
+                              const SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.inventory_2_outlined,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Products (${_products.length})',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  const Spacer(),
+                                  if (_showProducts)
+                                    TextButton.icon(
+                                      onPressed: _addProduct,
+                                      icon: const Icon(Icons.add, size: 18),
+                                      label: const Text('Add product'),
+                                    ),
+                                  const SizedBox(width: 4),
+                                  Switch(
+                                    value: _showProducts,
+                                    onChanged: (v) =>
+                                        setState(() => _showProducts = v),
+                                  ),
+                                ],
+                              ),
+                              if (_showProducts) ...[
+                                const SizedBox(height: 10),
+                                ProductsSection(
+                                  loading: _productsLoading,
+                                  products: _products,
+                                  onEdit: _editProduct,
+                                  onDelete: _deleteProduct,
+                                ),
+                              ],
                             ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.hourglass_top_rounded,
-                            size: 18,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Free trial',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      TrialSection(
-                        shop: _shop!,
-                        onToggle: _toggleTrial,
-                        onSaveDetails: _saveTrialDetails,
-                        onExtend: _extendTrial,
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.qr_code_2_outlined,
-                            size: 18,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Shop Links',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const Spacer(),
-                          Switch(
-                            value: _showShopLinks,
-                            onChanged: (v) =>
-                                setState(() => _showShopLinks = v),
-                          ),
-                        ],
-                      ),
-                      if (_showShopLinks) ...[
-                        const SizedBox(height: 10),
-                        ShopLinksSection(shop: _shop!, onSave: _saveShopLinks),
-                      ],
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.insights_outlined,
-                            size: 18,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Statistics',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      FilterRow<_DateFilter>(
-                        selected: _filter,
-                        onSelect: _selectFilter,
-                        options: [
-                          const FilterOption(
-                            value: _DateFilter.day,
-                            label: 'Daily',
-                          ),
-                          const FilterOption(
-                            value: _DateFilter.week,
-                            label: 'Weekly',
-                          ),
-                          const FilterOption(
-                            value: _DateFilter.month,
-                            label: 'Monthly',
-                          ),
-                          const FilterOption(
-                            value: _DateFilter.allTime,
-                            label: 'All time',
-                          ),
-                          FilterOption(
-                            value: _DateFilter.custom,
-                            label:
-                                _filter == _DateFilter.custom &&
-                                    _customRange != null
-                                ? '${formatShortDate(_customRange!.start)} - ${formatShortDate(_customRange!.end)}'
-                                : 'Custom range',
-                            avatar: (_) =>
-                                const Icon(Icons.date_range_outlined, size: 16),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      StatsSection(
-                        loading: _statsLoading,
-                        stats: _stats,
-                        comparison: _comparison,
-                        voids: _voids,
-                      ),
-                      if (_comparison != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Arrows compare with the previous '
-                          '${_comparison!.previousRange.dayCount} day'
-                          '${_comparison!.previousRange.dayCount == 1 ? '' : 's'} '
-                          '(${formatShortDate(_comparison!.previousRange.start)}'
-                          ' - '
-                          '${formatShortDate(_comparison!.previousRange.end)}).',
-                          style: TextStyle(
-                            color: colorScheme.onSurfaceVariant,
-                            fontSize: 11.5,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      TrendChart(
-                        loading: _seriesLoading,
-                        series: _dailySeries,
-                        rangeLabel: _resolveChartWindow().$3,
-                      ),
-                      const SizedBox(height: 16),
-                      SalesRhythmCard(
-                        loading: _statsLoading,
-                        hours: _hours,
-                        weekdays: _weekdays,
-                        rangeLabel: _filterLabel(),
-                        showWeekdays: _filter != _DateFilter.day,
-                      ),
-                      const SizedBox(height: 16),
-                      ProductPerformanceCard(
-                        loading: _statsLoading,
-                        performance: _performance,
-                        deadStock: _deadStock,
-                        rangeLabel: _filterLabel(),
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.receipt_long_outlined,
-                            size: 18,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Transactions',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const Spacer(),
-                          Switch(
-                            value: _showTransactions,
-                            onChanged: (v) {
-                              setState(() => _showTransactions = v);
-                              if (v) _openTransactionsModal();
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'View sales, expenses, and additional income for this shop.',
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.group_outlined,
-                            size: 18,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Users (${_users.length})',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const Spacer(),
-                          TextButton.icon(
-                            onPressed: _addUser,
-                            icon: const Icon(
-                              Icons.person_add_alt_1_outlined,
-                              size: 18,
-                            ),
-                            label: const Text('Add user'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      if (_users.isEmpty)
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Text(
-                              'No users yet.',
-                              style: TextStyle(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        )
-                      else ...[
-                        ActiveUserCountsRow(users: _users),
-                        const SizedBox(height: 14),
-                        UserGroup(
-                          label: 'Owners',
-                          users: _users
-                              .where((u) => u.role == 'owner')
-                              .toList(),
-                          onReissueLogin: _reissueLogin,
-                          onEdit: _editUser,
-                          onDelete: _deleteUser,
-                          onViewDevices: _viewDevices,
-                        ),
-                        const SizedBox(height: 16),
-                        UserGroup(
-                          label: 'Staff',
-                          users: _users
-                              .where((u) => u.role != 'owner')
-                              .toList(),
-                          onReissueLogin: _reissueLogin,
-                          onEdit: _editUser,
-                          onDelete: _deleteUser,
-                          onViewDevices: _viewDevices,
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-                      RecentDeviceLoginsSection(
-                        shopId: widget.slug,
-                        shopService: widget.shopService,
-                      ),
-                      const SizedBox(height: 24),
-                      HistoryRequestsSection(shopId: widget.slug),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.inventory_2_outlined,
-                            size: 18,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Products (${_products.length})',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const Spacer(),
-                          if (_showProducts)
-                            TextButton.icon(
-                              onPressed: _addProduct,
-                              icon: const Icon(Icons.add, size: 18),
-                              label: const Text('Add product'),
-                            ),
-                          const SizedBox(width: 4),
-                          Switch(
-                            value: _showProducts,
-                            onChanged: (v) => setState(() => _showProducts = v),
-                          ),
-                        ],
-                      ),
-                      if (_showProducts) ...[
-                        const SizedBox(height: 10),
-                        ProductsSection(
-                          loading: _productsLoading,
-                          products: _products,
-                          onEdit: _editProduct,
-                          onDelete: _deleteProduct,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+                    ),
             ),
+            ShopPaymentsTab(
+              slug: widget.slug,
+              shopName: _shop?.name ?? widget.slug,
+            ),
+          ],
+        ),
+      ),
     );
+  }
+}
+
+/// Keeps the Details tab's state (scroll position, half-typed fields)
+/// while the Payments tab is showing.
+class _KeepAlive extends StatefulWidget {
+  const _KeepAlive({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }
