@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:zonixweb/models/shop.dart';
-import 'package:zonixweb/screens/shop_detail/widgets/shop_links_section.dart';
+import 'package:zonixweb/features/shops/models/shop.dart';
+import 'package:zonixweb/features/shops/widgets/settings/shop_links_section.dart';
 
 Shop shopWith({
   String? website,

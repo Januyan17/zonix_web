@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/shop_activity.dart';
-import 'package:zonixweb/models/shop_stats.dart';
-import 'package:zonixweb/models/shop_transaction.dart';
-import 'package:zonixweb/utils/shop_activity_aggregate.dart';
+import 'package:zonixweb/features/shops/models/shop_activity.dart';
+import 'package:zonixweb/features/shops/models/shop_stats.dart';
+import 'package:zonixweb/features/shops/models/shop_transaction.dart';
+import 'package:zonixweb/features/shops/utils/shop_activity_aggregate.dart';
 
 /// These pin down the arithmetic the shop detail page used to get from a
 /// fetch-per-date-filter round trip: one fetch now backs every range, so

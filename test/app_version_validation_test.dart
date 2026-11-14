@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/utils/app_version_validation.dart';
+import 'package:zonixweb/features/app_version/utils/app_version_validation.dart';
 
 void main() {
   group('isAbsoluteHttpUrl', () {
@@ -94,7 +94,10 @@ void main() {
 
     test('validates the shape when set', () {
       expect(iosDownloadUrlError('testflight.apple.com/join/x'), isNotNull);
-      expect(iosDownloadUrlError('https://testflight.apple.com/join/x'), isNull);
+      expect(
+        iosDownloadUrlError('https://testflight.apple.com/join/x'),
+        isNull,
+      );
     });
   });
 }

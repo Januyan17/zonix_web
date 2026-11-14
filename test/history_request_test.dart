@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/history_request.dart';
-import 'package:zonixweb/services/history_request_service.dart';
-import 'package:zonixweb/utils/history_request_state.dart';
-import 'package:zonixweb/widgets/history_request_tile.dart';
+import 'package:zonixweb/features/history_requests/models/history_request.dart';
+import 'package:zonixweb/features/history_requests/services/history_request_service.dart';
+import 'package:zonixweb/features/history_requests/utils/history_request_state.dart';
+import 'package:zonixweb/features/history_requests/widgets/history_request_tile.dart';
 
 /// Never called in these tests — the tile only touches the service when
 /// the switch is tapped.

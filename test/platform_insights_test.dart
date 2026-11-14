@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/platform_stats.dart';
-import 'package:zonixweb/models/shop_stats.dart';
+import 'package:zonixweb/features/overview/models/platform_stats.dart';
+import 'package:zonixweb/features/shops/models/shop_stats.dart';
 
 /// The platform-wide figures derived on top of the health load and the
 /// volume scan: the liveness census, and the concentration/averages that
@@ -23,19 +23,23 @@ ShopHealth _shop({required String slug, DateTime? lastSaleAt}) => ShopHealth(
   maxActiveDevicesStaff: 1,
 );
 
-ShopVolume _volume(String slug, double revenue, {int sales = 1, double cogs = 0}) =>
-    ShopVolume(
-      slug: slug,
-      name: slug,
-      stats: ShopStats(
-        salesCount: sales,
-        totalRevenue: revenue,
-        totalCogs: cogs,
-        totalExpenses: 0,
-        totalAdditionalIncome: 0,
-        productCount: 0,
-      ),
-    );
+ShopVolume _volume(
+  String slug,
+  double revenue, {
+  int sales = 1,
+  double cogs = 0,
+}) => ShopVolume(
+  slug: slug,
+  name: slug,
+  stats: ShopStats(
+    salesCount: sales,
+    totalRevenue: revenue,
+    totalCogs: cogs,
+    totalExpenses: 0,
+    totalAdditionalIncome: 0,
+    productCount: 0,
+  ),
+);
 
 PlatformVolume _platformVolume(List<ShopVolume> shops) => PlatformVolume(
   // Sorted revenue-first, as the service produces it — topShopsShare reads
@@ -54,8 +58,14 @@ void main() {
     test('grades every shop by how recently it sold', () {
       final health = PlatformHealth(
         shops: [
-          _shop(slug: 'live', lastSaleAt: now.subtract(const Duration(days: 1))),
-          _shop(slug: 'quiet', lastSaleAt: now.subtract(const Duration(days: 8))),
+          _shop(
+            slug: 'live',
+            lastSaleAt: now.subtract(const Duration(days: 1)),
+          ),
+          _shop(
+            slug: 'quiet',
+            lastSaleAt: now.subtract(const Duration(days: 8)),
+          ),
           _shop(
             slug: 'dormant',
             lastSaleAt: now.subtract(const Duration(days: 40)),

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/device_login.dart';
-import 'package:zonixweb/utils/device_login_badges.dart';
+import 'package:zonixweb/features/device_logins/models/device_login.dart';
+import 'package:zonixweb/features/device_logins/utils/device_login_badges.dart';
 
 DeviceLogin login(String id, {String shopId = 's1', String userId = 'u1'}) =>
     DeviceLogin(id: id, shopId: shopId, userId: userId);

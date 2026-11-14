@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/shop_billing.dart';
-import 'package:zonixweb/widgets/billing_widgets.dart';
+import 'package:zonixweb/features/billing/models/shop_billing.dart';
+import 'package:zonixweb/features/billing/utils/billing_amount.dart';
+import 'package:zonixweb/features/billing/widgets/record_payment_dialog.dart';
 
 void main() {
   group('addMonths', () {
