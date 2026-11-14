@@ -35,3 +35,5 @@ flutter:
   assets:
     - .env
     - assets/zonix_logo.png
+    - assets/brand/zonix_admin_icon.png
+    - assets/brand/zonix_admin_mark.png

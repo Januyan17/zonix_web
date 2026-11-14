@@ -59,7 +59,12 @@ class AuthShell extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Center(child: ZonixBadge(size: narrow ? 60 : 68)),
+                            Center(
+                              child: ZonixBadge(
+                                size: narrow ? 96 : 112,
+                                showLabel: true,
+                              ),
+                            ),
                             const SizedBox(height: AppDimens.spacing24),
                             Text(
                               title,
