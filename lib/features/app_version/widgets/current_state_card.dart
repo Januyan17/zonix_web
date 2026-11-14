@@ -50,7 +50,7 @@ class CurrentStateCard extends StatelessWidget {
               const SizedBox(height: AppDimens.spacing10),
               InfoRow(
                 icon: Icons.upgrade_rounded,
-                label: 'Nudging',
+                label: 'Prompting',
                 value: 'Builds below ${config.latestBuild}',
               ),
               const SizedBox(height: AppDimens.spacing10),

@@ -23,7 +23,8 @@ class AppVersionConfig {
   final int minSupportedBuild;
 
   /// The newest build that has been distributed. Devices below this get a
-  /// dismissible nudge, not a block.
+  /// non-dismissible update prompt on launch, but are not locked out the
+  /// way builds below [minSupportedBuild] are.
   final int latestBuild;
 
   /// Where an Android device gets the new build — a direct .apk link today,
@@ -34,7 +35,7 @@ class AppVersionConfig {
   /// iOS build.
   final String iosDownloadUrl;
 
-  /// Replaces the app's default copy on both the block screen and the nudge.
+  /// Replaces the app's default copy on both the block screen and the update prompt.
   /// Empty means the app uses its own wording.
   final String message;
 

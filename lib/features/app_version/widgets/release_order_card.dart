@@ -10,7 +10,7 @@ class ReleaseOrderCard extends StatelessWidget {
   static const _steps = [
     'Build the app, and note the build number after the "+" in pubspec.',
     'Upload the APK and open the link on a phone to confirm it downloads.',
-    'Only then raise "Block versions below" here.',
+    'Only then raise "Minimum allowed build" here.',
   ];
 
   @override

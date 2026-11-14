@@ -317,7 +317,7 @@ class _AppVersionScreenState extends State<AppVersionScreen> {
                 labelText: 'Message shown in the app (optional)',
                 helperText:
                     'Replaces the app\'s default copy on both the block '
-                    'screen and the nudge. Leave empty for the default.',
+                    'screen and the update prompt. Leave empty for the default.',
                 helperMaxLines: 2,
               ),
             ),

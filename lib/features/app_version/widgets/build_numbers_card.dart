@@ -89,7 +89,7 @@ class BuildNumbersCard extends StatelessWidget {
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                  labelText: 'Block versions below',
+                  labelText: 'Minimum build number',
                   errorMaxLines: 3,
                 ),
                 validator: (v) {
@@ -113,17 +113,18 @@ class BuildNumbersCard extends StatelessWidget {
               color: ZonixColors.chartBlue,
               tint: ZonixColors.cyanContainer,
               title: 'Latest released build',
-              tag: 'Optional update',
+              tag: 'Update prompt',
               description:
                   'The newest build people can download. Anyone on a lower '
-                  'build sees an "Update available" message they can '
-                  'dismiss and keep working.',
+                  'build gets an "Update available" prompt when they open '
+                  'the app. It cannot be closed: they update, or tap "Check '
+                  'again" once they have.',
               field: TextFormField(
                 controller: latestController,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                  labelText: 'Suggest updating below',
+                  labelText: 'Latest build number',
                   errorMaxLines: 3,
                 ),
                 onChanged: (_) => onLatestChanged(),
@@ -295,9 +296,9 @@ class _ImpactPreview extends StatelessWidget {
             _ImpactRow(
               icon: Icons.upgrade_rounded,
               color: ZonixColors.chartBlue,
-              builds: _nudgedBuilds(min, latest),
+              builds: _promptedBuilds(min, latest),
               outcome: latest > min && latest > 1
-                  ? 'See "Update available", can keep working'
+                  ? 'Asked to update when they open the app'
                   : 'Nobody is asked to update',
             ),
             const SizedBox(height: AppDimens.spacing8),
@@ -313,7 +314,7 @@ class _ImpactPreview extends StatelessWidget {
     );
   }
 
-  static String _nudgedBuilds(int min, int latest) {
+  static String _promptedBuilds(int min, int latest) {
     if (latest <= min || latest <= 1) return 'No builds';
     if (min <= 0) return 'Builds below $latest';
     if (latest - 1 == min) return 'Build $min';
