@@ -19,21 +19,25 @@ class ShopBillingEntry {
   final ShopBilling billing;
 }
 
-/// What the admin entered when marking a month as paid.
+/// What the admin entered when marking a payment.
 class PaymentInput {
-  const PaymentInput({
+  PaymentInput({
     required this.amount,
     required this.paidAt,
-    required this.period,
+    required List<DateTime> periods,
     required this.nextDueAt,
     this.note,
-  });
+  }) : periods = normalizePeriods(periods);
 
   final double amount;
   final DateTime paidAt;
-  final DateTime period;
+
+  /// The months this payment covers (any months, oldest first).
+  final List<DateTime> periods;
   final DateTime? nextDueAt;
   final String? note;
+
+  int get months => periods.length;
 }
 
 /// Monthly subscription tracking per shop.
@@ -94,7 +98,7 @@ class BillingService {
       id: ref.collection('_ids').doc().id,
       amount: input.amount,
       paidAt: dateOnly(input.paidAt),
-      period: monthOf(input.period),
+      periods: input.periods,
       note: input.note,
       recordedAt: DateTime.now(),
     );

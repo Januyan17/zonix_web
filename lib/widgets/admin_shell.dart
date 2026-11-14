@@ -11,6 +11,7 @@ import '../services/auth_service.dart';
 import '../services/billing_service.dart';
 import '../services/history_request_service.dart';
 import '../services/shop_service.dart';
+import '../services/trial_overview.dart';
 import '../theme/app_dimens.dart';
 import 'zonix_badge.dart';
 
@@ -184,6 +185,13 @@ class _SideNav extends StatelessWidget {
   }
 }
 
+/// Overdue/due-soon monthly payments plus ended free trials. One shared
+/// object, so rebuilding the nav doesn't re-subscribe the listeners.
+final Listenable _paymentsBadgeSource = Listenable.merge([
+  ShopBillingOverview.instance,
+  TrialOverview.instance,
+]);
+
 String? _countLabel(int count) => count <= 0 ? null : '$count';
 
 /// The pending-requests bubble text: null (no bubble) at 0, and "50+" at
@@ -255,13 +263,16 @@ class _NavContent extends StatelessWidget {
       ),
       // Overdue / due-soon shop payments, from one shared listener.
       ListenableBuilder(
-        listenable: ShopBillingOverview.instance,
+        listenable: _paymentsBadgeSource,
         builder: (context, _) => _NavItem(
           icon: Icons.payments_outlined,
           label: 'Payments',
           selected: current == AdminPage.payments,
           extended: extended,
-          badgeLabel: _countLabel(ShopBillingOverview.instance.attentionCount),
+          badgeLabel: _countLabel(
+            ShopBillingOverview.instance.attentionCount +
+                TrialOverview.instance.endedCount,
+          ),
           onTap: () => onNavigate(AdminPage.payments),
         ),
       ),

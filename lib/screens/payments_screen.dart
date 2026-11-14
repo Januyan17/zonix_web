@@ -4,27 +4,36 @@ import '../models/shop_billing.dart';
 import '../services/auth_service.dart';
 import '../services/billing_service.dart';
 import '../services/shop_service.dart';
+import '../services/trial_overview.dart';
 import '../theme/app_dimens.dart';
 import '../utils/date_format.dart';
 import '../utils/money_format.dart';
 import '../widgets/admin_shell.dart';
 import '../widgets/billing_widgets.dart';
+import 'free_trials_tab.dart';
 import 'shop_detail/shop_detail_screen.dart';
 
 /// Every shop's monthly payment status in one place, soonest due first:
 /// the reminder list. Overdue and due-soon shops are also counted on the
 /// nav badge. Shops are marked paid here or from their own Payments tab.
+///
+/// A second tab lists shops on a free trial, with ended trials (app locked,
+/// payment to collect) first; those are counted on the nav badge too.
 class PaymentsScreen extends StatefulWidget {
   const PaymentsScreen({
     super.key,
     required this.authService,
     required this.shopService,
     this.billingService,
+    this.initialTab = 0,
   });
 
   final AuthService authService;
   final ShopService shopService;
   final BillingService? billingService;
+
+  /// 0 = Monthly payments, 1 = Free trials.
+  final int initialTab;
 
   @override
   State<PaymentsScreen> createState() => _PaymentsScreenState();
@@ -35,6 +44,12 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       widget.billingService ?? BillingService();
   final _overview = ShopBillingOverview.instance;
   final _searchController = TextEditingController();
+
+  /// Kept as one object so rebuilds don't re-subscribe the shared listener.
+  late final Listenable _monthlyListenable = Listenable.merge([
+    _overview,
+    _searchController,
+  ]);
 
   @override
   void dispose() {
@@ -60,9 +75,52 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       authService: widget.authService,
       shopService: widget.shopService,
       current: AdminPage.payments,
-      body: ListenableBuilder(
-        listenable: Listenable.merge([_overview, _searchController]),
-        builder: (context, _) => _buildBody(),
+      body: DefaultTabController(
+        length: 2,
+        initialIndex: widget.initialTab,
+        child: Column(
+          children: [
+            Material(
+              color: Theme.of(context).colorScheme.surface,
+              child: TabBar(
+                tabs: [
+                  const Tab(
+                    icon: Icon(Icons.payments_outlined),
+                    text: 'Monthly payments',
+                  ),
+                  ListenableBuilder(
+                    listenable: TrialOverview.instance,
+                    builder: (context, _) {
+                      final ended = TrialOverview.instance.endedCount;
+                      return Tab(
+                        icon: Badge(
+                          isLabelVisible: ended > 0,
+                          label: Text('$ended'),
+                          child: const Icon(Icons.hourglass_top_rounded),
+                        ),
+                        text: 'Free trials',
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  ListenableBuilder(
+                    listenable: _monthlyListenable,
+                    builder: (context, _) => _buildBody(),
+                  ),
+                  FreeTrialsTab(
+                    shopService: widget.shopService,
+                    billingService: _service,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -393,6 +451,8 @@ class _ShopBillingTile extends StatelessWidget {
         'Due ${formatShortDate(billing.nextDueAt!)}',
       if (billing.monthlyAmount != null) formatMoney(billing.monthlyAmount!),
       if (last != null) 'Last paid ${formatShortDate(last.paidAt)}',
+      if (billing.paidThrough != null)
+        'Paid until ${shortMonthLabel(billing.paidThrough!)}',
     ].join(' · ');
 
     return InkWell(

@@ -19,16 +19,22 @@ enum BillingDueState {
   overdue,
 }
 
-/// One month's subscription payment, as recorded by the admin.
+/// Most months one payment may cover (e.g. a 3-year prepayment).
+const kMaxPaymentMonths = 36;
+
+/// A subscription payment, as recorded by the admin. Covers the months in
+/// [periods] — one for a normal monthly payment, several when the customer
+/// pays for more (any months, not necessarily consecutive).
 class ShopPayment {
-  const ShopPayment({
+  ShopPayment({
     required this.id,
     required this.amount,
     required this.paidAt,
-    required this.period,
+    required List<DateTime> periods,
     this.note,
     this.recordedAt,
-  });
+  }) : assert(periods.isNotEmpty),
+       periods = normalizePeriods(periods);
 
   final String id;
   final double amount;
@@ -36,21 +42,56 @@ class ShopPayment {
   /// The exact date the customer paid.
   final DateTime paidAt;
 
-  /// The month this payment covers, always the 1st of that month.
-  final DateTime period;
+  /// The months covered, each the 1st of its month, oldest first, no
+  /// duplicates.
+  final List<DateTime> periods;
 
   final String? note;
 
   /// When the admin entered it. Null for a moment while pending.
   final DateTime? recordedAt;
 
+  /// The first month covered.
+  DateTime get period => periods.first;
+
+  /// The last month covered.
+  DateTime get lastPeriod => periods.last;
+
+  int get months => periods.length;
+
+  bool covers(DateTime month) => periods.contains(monthOf(month));
+
+  /// "November 2026", "Nov 2026 – Feb 2027" for a run of months, or
+  /// "Nov 2026, Jan 2027" when there are gaps.
+  String get coverageLabel => describePeriods(periods);
+
   factory ShopPayment.fromMap(Map<String, dynamic> map) {
     final paidAt = toDateTime(map['paid_at']) ?? DateTime(1970);
+    final first = parsePeriodKey(map['period'] as String?) ?? monthOf(paidAt);
+
+    // Newest format: an explicit list of months. Older payments have only
+    // period (+ months for a consecutive run); those read as before.
+    final raw = map['periods'];
+    var periods = <DateTime>[
+      if (raw is List)
+        for (final k in raw)
+          if (k is String) ?parsePeriodKey(k),
+    ];
+    if (periods.isEmpty) {
+      final count = ((map['months'] as num?)?.toInt() ?? 1).clamp(
+        1,
+        kMaxPaymentMonths,
+      );
+      periods = [
+        for (var i = 0; i < count; i++) DateTime(first.year, first.month + i),
+      ];
+    }
+
     return ShopPayment(
       id: map['id'] as String? ?? '',
       amount: (map['amount'] as num?)?.toDouble() ?? 0,
       paidAt: paidAt,
-      period: parsePeriodKey(map['period'] as String?) ?? monthOf(paidAt),
+      periods: periods,
       note: map['note'] as String?,
       recordedAt: toDateTime(map['recorded_at']),
     );
@@ -60,10 +101,36 @@ class ShopPayment {
     'id': id,
     'amount': amount,
     'paid_at': Timestamp.fromDate(paidAt),
+    // period/months kept alongside the list so older readers still work.
     'period': periodKey(period),
+    'months': months,
+    'periods': [for (final p in periods) periodKey(p)],
     'note': note,
     'recorded_at': Timestamp.fromDate(recordedAt ?? DateTime.now()),
   };
+}
+
+/// Months as 1st-of-month dates, de-duplicated and sorted oldest first.
+List<DateTime> normalizePeriods(Iterable<DateTime> months) =>
+    {for (final m in months) monthOf(m)}.toList()..sort();
+
+/// See [ShopPayment.coverageLabel].
+String describePeriods(List<DateTime> months) {
+  final sorted = normalizePeriods(months);
+  if (sorted.isEmpty) return 'No months';
+  if (sorted.length == 1) return monthLabel(sorted.first);
+  var consecutive = true;
+  for (var i = 1; i < sorted.length; i++) {
+    final prev = sorted[i - 1];
+    if (sorted[i] != DateTime(prev.year, prev.month + 1)) {
+      consecutive = false;
+      break;
+    }
+  }
+  if (consecutive) {
+    return '${shortMonthLabel(sorted.first)} – ${shortMonthLabel(sorted.last)}';
+  }
+  return sorted.map(shortMonthLabel).join(', ');
 }
 
 /// A shop's billing plan and payment history, stored on its
@@ -103,10 +170,21 @@ class ShopBilling {
 
   ShopPayment? get lastPayment => payments.isEmpty ? null : payments.first;
 
-  /// Payments covering [period]'s month (normally zero or one).
+  /// Payments covering [period]'s month — including multi-month ones that
+  /// started earlier (normally zero or one).
   List<ShopPayment> paymentsFor(DateTime period) {
-    final key = periodKey(period);
-    return payments.where((p) => periodKey(p.period) == key).toList();
+    return payments.where((p) => p.covers(period)).toList();
+  }
+
+  /// The last month covered by any payment, or null if none.
+  DateTime? get paidThrough {
+    DateTime? latest;
+    for (final p in payments) {
+      if (latest == null || p.lastPeriod.isAfter(latest)) {
+        latest = p.lastPeriod;
+      }
+    }
+    return latest;
   }
 
   bool isPaidFor(DateTime period) => paymentsFor(period).isNotEmpty;

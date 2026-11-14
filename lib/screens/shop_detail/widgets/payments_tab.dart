@@ -76,7 +76,7 @@ class _ShopPaymentsTabState extends State<ShopPaymentsTab>
         title: const Text('Delete payment?'),
         content: Text(
           'Remove the ${formatMoney(payment.amount)} payment for '
-          '${monthLabel(payment.period)} (paid '
+          '${payment.coverageLabel} (paid '
           '${formatShortDate(payment.paidAt)})? The next due date '
           'won\'t change — edit the plan if it should.',
         ),
@@ -325,13 +325,20 @@ class _PlanCard extends StatelessWidget {
                   ? 'Not set'
                   : formatMoney(billing.monthlyAmount!),
             ),
+            if (billing.paidThrough != null)
+              row(
+                Icons.event_available_outlined,
+                'Paid until',
+                'End of ${monthLabel(billing.paidThrough!)}',
+              ),
             row(
               Icons.history_rounded,
               'Last payment',
               last == null
                   ? 'None yet'
                   : '${formatMoney(last.amount)} on '
-                        '${formatShortDate(last.paidAt)}',
+                        '${formatShortDate(last.paidAt)}'
+                        '${last.months > 1 ? ' (${last.months} months)' : ''}',
             ),
             const SizedBox(height: AppDimens.spacing12),
             Wrap(
@@ -391,10 +398,9 @@ class _MonthStrip extends StatelessWidget {
                 builder: (context) {
                   final paid = billing.paymentsFor(m);
                   final isPaid = paid.isNotEmpty;
-                  final total = paid.fold<double>(0, (t, p) => t + p.amount);
                   return Tooltip(
                     message: isPaid
-                        ? '${monthLabel(m)}: ${formatMoney(total)} paid'
+                        ? '${monthLabel(m)}: paid — ${paid.map((p) => p.months > 1 ? '${formatMoney(p.amount)} for ${p.coverageLabel}' : formatMoney(p.amount)).join(', ')}'
                         : '${monthLabel(m)}: not paid — tap to mark paid',
                     child: ActionChip(
                       avatar: Icon(
@@ -443,7 +449,10 @@ class _PaymentTile extends StatelessWidget {
         child: Icon(Icons.check_rounded, color: ZonixColors.onEmeraldContainer),
       ),
       title: Text(
-        '${monthLabel(payment.period)} · ${formatMoney(payment.amount)}',
+        payment.months > 1
+            ? '${payment.coverageLabel} · ${payment.months} months · '
+                  '${formatMoney(payment.amount)}'
+            : '${payment.coverageLabel} · ${formatMoney(payment.amount)}',
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(
