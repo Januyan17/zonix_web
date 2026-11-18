@@ -800,10 +800,6 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
           child: ListView(
             padding: AppDimens.paddingAll20,
             children: [
-              // Users come first so role and sign-in changes are reachable
-              // without scrolling.
-              ..._buildUsers(),
-              _sectionGap,
               ShopSummaryCard(
                 shop: shop,
                 staffCount: _users
@@ -818,6 +814,10 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                     ? null
                     : _toggleStaffDelete,
               ),
+              // Users sit right under the summary so role and sign-in
+              // changes are reachable without scrolling.
+              _sectionGap,
+              ..._buildUsers(),
               _sectionGap,
               const SectionHeader(
                 icon: Icons.hourglass_top_rounded,
