@@ -634,6 +634,75 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     );
   }
 
+  /// Quick role change from the user card. Keeps name + sign-in as-is.
+  Future<void> _changeUserRole(ShopUser user, String role) async {
+    final label = role == 'owner' ? 'Owner' : 'Staff';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Make ${user.displayName} $label?'),
+        content: Text(
+          role == 'owner'
+              ? 'Owners get full access to this shop.'
+              : 'This user will lose owner access and become staff.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text('Make $label'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await _runBlocking(
+      () => _service.updateShopUser(
+        slug: _slug,
+        uid: user.id,
+        displayName: user.displayName,
+        role: role,
+        isEnabled: user.isEnabled,
+      ),
+      failure: 'Failed to change role',
+      onSuccess: (_) async {
+        await _load();
+        if (mounted) {
+          showSnackBarMessage(context, '${user.displayName} is now $label');
+        }
+      },
+    );
+  }
+
+  /// Quick sign-in enable/disable from the user card.
+  Future<void> _setUserEnabled(ShopUser user, bool isEnabled) async {
+    await _runBlocking(
+      () => _service.updateShopUser(
+        slug: _slug,
+        uid: user.id,
+        displayName: user.displayName,
+        role: user.role,
+        isEnabled: isEnabled,
+      ),
+      failure: 'Failed to update sign-in',
+      onSuccess: (_) async {
+        await _load();
+        if (mounted) {
+          showSnackBarMessage(
+            context,
+            isEnabled
+                ? '${user.displayName} can sign in'
+                : '${user.displayName} can no longer sign in',
+          );
+        }
+      },
+    );
+  }
+
   void _viewDevices(ShopUser user) {
     showDialog(
       context: context,
@@ -892,6 +961,8 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
           onEdit: _editUser,
           onDelete: _deleteUser,
           onViewDevices: _viewDevices,
+          onRoleChanged: _changeUserRole,
+          onEnabledChanged: _setUserEnabled,
         ),
         const SizedBox(height: AppDimens.spacing16),
         UserGroup(
@@ -901,6 +972,8 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
           onEdit: _editUser,
           onDelete: _deleteUser,
           onViewDevices: _viewDevices,
+          onRoleChanged: _changeUserRole,
+          onEnabledChanged: _setUserEnabled,
         ),
       ],
     ];

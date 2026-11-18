@@ -12,6 +12,8 @@ class UserCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onViewDevices,
+    this.onRoleChanged,
+    this.onEnabledChanged,
   });
 
   final ShopUser user;
@@ -19,6 +21,12 @@ class UserCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onViewDevices;
+
+  /// Quick role switch from the card itself (no need to open Edit).
+  final ValueChanged<String>? onRoleChanged;
+
+  /// Quick sign-in enable/disable from the card itself.
+  final ValueChanged<bool>? onEnabledChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -92,21 +100,24 @@ class UserCard extends StatelessWidget {
     final actionsRow = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Chip(
-          label: Text(user.role),
-          backgroundColor: isOwner
-              ? colorScheme.primaryContainer.withValues(alpha: 0.6)
-              : colorScheme.surfaceContainerHighest,
-          labelStyle: TextStyle(
-            color: isOwner
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurfaceVariant,
+        _RolePill(
+          role: user.role,
+          isOwner: isOwner,
+          onChanged: onRoleChanged,
+        ),
+        const SizedBox(width: 6),
+        Tooltip(
+          message: user.isEnabled
+              ? 'Can sign in · tap to disable'
+              : 'Sign-in disabled · tap to enable',
+          child: Transform.scale(
+            scale: 0.8,
+            child: Switch(
+              value: user.isEnabled,
+              onChanged: onEnabledChanged,
+            ),
           ),
         ),
-        if (!user.isEnabled) ...[
-          const SizedBox(width: 6),
-          Icon(Icons.block, size: 16, color: colorScheme.error),
-        ],
         PopupMenuButton<String>(
           icon: Icon(
             Icons.more_vert_rounded,
@@ -199,6 +210,91 @@ class UserCard extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Role badge that doubles as a one-tap Staff/Owner switcher.
+class _RolePill extends StatelessWidget {
+  const _RolePill({
+    required this.role,
+    required this.isOwner,
+    required this.onChanged,
+  });
+
+  final String role;
+  final bool isOwner;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bg = isOwner
+        ? colorScheme.primaryContainer.withValues(alpha: 0.6)
+        : colorScheme.surfaceContainerHighest;
+    final fg = isOwner
+        ? colorScheme.onPrimaryContainer
+        : colorScheme.onSurfaceVariant;
+
+    final pill = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isOwner
+                ? Icons.workspace_premium_outlined
+                : Icons.badge_outlined,
+            size: 15,
+            color: fg,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            role,
+            style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+          ),
+          if (onChanged != null) ...[
+            const SizedBox(width: 2),
+            Icon(Icons.arrow_drop_down_rounded, size: 18, color: fg),
+          ],
+        ],
+      ),
+    );
+
+    if (onChanged == null) return pill;
+
+    return PopupMenuButton<String>(
+      tooltip: 'Change role',
+      initialValue: role,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: (value) {
+        if (value != role) onChanged!(value);
+      },
+      itemBuilder: (menuContext) {
+        final menuColors = Theme.of(menuContext).colorScheme;
+        return [
+          for (final (value, label, icon) in const [
+            ('staff', 'Staff', Icons.badge_outlined),
+            ('owner', 'Owner', Icons.workspace_premium_outlined),
+          ])
+            PopupMenuItem(
+              value: value,
+              height: 40,
+              child: MenuRow(
+                icon: value == role ? Icons.check_rounded : icon,
+                label: label,
+                color: value == role
+                    ? menuColors.primary
+                    : menuColors.onSurface,
+              ),
+            ),
+        ];
+      },
+      child: pill,
     );
   }
 }

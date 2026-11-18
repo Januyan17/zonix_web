@@ -12,6 +12,8 @@ class UserGroup extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onViewDevices,
+    this.onRoleChanged,
+    this.onEnabledChanged,
   });
 
   final String label;
@@ -20,6 +22,8 @@ class UserGroup extends StatelessWidget {
   final ValueChanged<ShopUser> onEdit;
   final ValueChanged<ShopUser> onDelete;
   final ValueChanged<ShopUser> onViewDevices;
+  final void Function(ShopUser user, String role)? onRoleChanged;
+  final void Function(ShopUser user, bool isEnabled)? onEnabledChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +58,12 @@ class UserGroup extends StatelessWidget {
               onEdit: () => onEdit(u),
               onDelete: () => onDelete(u),
               onViewDevices: () => onViewDevices(u),
+              onRoleChanged: onRoleChanged == null
+                  ? null
+                  : (role) => onRoleChanged!(u, role),
+              onEnabledChanged: onEnabledChanged == null
+                  ? null
+                  : (enabled) => onEnabledChanged!(u, enabled),
             ),
             const SizedBox(height: 8),
           ],
