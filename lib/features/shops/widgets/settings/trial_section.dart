@@ -43,6 +43,7 @@ class TrialSection extends StatefulWidget {
     required this.onToggle,
     required this.onSaveDetails,
     required this.onExtend,
+    this.onStartFor,
   });
 
   final Shop shop;
@@ -52,6 +53,10 @@ class TrialSection extends StatefulWidget {
   final Future<void> Function(bool enabled) onToggle;
   final Future<void> Function(TrialDetailsResult) onSaveDetails;
   final Future<void> Function(int days) onExtend;
+
+  /// Starts a trial of a custom length (minutes). When null, the start
+  /// dialog only offers the default [kDefaultTrialDays]-day trial.
+  final Future<void> Function(Duration length)? onStartFor;
 
   @override
   State<TrialSection> createState() => _TrialSectionState();
@@ -108,32 +113,25 @@ class _TrialSectionState extends State<TrialSection> {
   }
 
   Future<void> _toggle(bool enable) async {
+    Duration? customLength;
     if (enable) {
-      final confirmed = await showDialog<bool>(
+      final choice = await showDialog<_StartTrialChoice>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Start free trial?'),
-          content: Text(
-            'Start a $kDefaultTrialDays-day trial for ${widget.shop.name}? '
-            'When it ends, the app will be locked until you turn this off.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Start trial'),
-            ),
-          ],
+        builder: (_) => _StartTrialDialog(
+          shopName: widget.shop.name,
+          allowMinutes: widget.onStartFor != null,
         ),
       );
-      if (confirmed != true || !mounted) return;
+      if (choice == null || !mounted) return;
+      customLength = choice.customLength;
     }
     setState(() => _toggling = true);
     try {
-      await widget.onToggle(enable);
+      if (customLength != null) {
+        await widget.onStartFor!(customLength);
+      } else {
+        await widget.onToggle(enable);
+      }
     } finally {
       if (mounted) setState(() => _toggling = false);
     }
@@ -343,6 +341,117 @@ class _ExtendTrialDialogState extends State<_ExtendTrialDialog> {
           },
           child: const Text('Extend'),
         ),
+      ],
+    );
+  }
+}
+
+/// What the start dialog returns: [customLength] is null for the default
+/// [kDefaultTrialDays]-day trial.
+class _StartTrialChoice {
+  const _StartTrialChoice(this.customLength);
+
+  final Duration? customLength;
+}
+
+/// Confirms starting a trial, with an optional custom length in minutes
+/// (handy for testing the mobile app's lock without waiting days).
+class _StartTrialDialog extends StatefulWidget {
+  const _StartTrialDialog({required this.shopName, required this.allowMinutes});
+
+  final String shopName;
+  final bool allowMinutes;
+
+  @override
+  State<_StartTrialDialog> createState() => _StartTrialDialogState();
+}
+
+class _StartTrialDialogState extends State<_StartTrialDialog> {
+  bool _useMinutes = false;
+  final _minutesController = TextEditingController(text: '5');
+  String? _error;
+
+  @override
+  void dispose() {
+    _minutesController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_useMinutes) {
+      Navigator.of(context).pop(const _StartTrialChoice(null));
+      return;
+    }
+    final minutes = int.tryParse(_minutesController.text.trim());
+    if (minutes == null || minutes < 1 || minutes > 60 * 24 * 365) {
+      setState(() => _error = 'Enter minutes (1 or more)');
+      return;
+    }
+    Navigator.of(context).pop(_StartTrialChoice(Duration(minutes: minutes)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final length = _useMinutes
+        ? '${_minutesController.text.trim()}-minute'
+        : '$kDefaultTrialDays-day';
+    return AlertDialog(
+      title: const Text('Start free trial?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Start a $length trial for ${widget.shopName}? '
+            'When it ends, the app will be locked until you turn this off.',
+          ),
+          if (widget.allowMinutes) ...[
+            const SizedBox(height: AppDimens.spacing16),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  label: Text('$kDefaultTrialDays days'),
+                  icon: Icon(Icons.calendar_today_outlined, size: 16),
+                ),
+                ButtonSegment(
+                  value: true,
+                  label: Text('Minutes'),
+                  icon: Icon(Icons.timer_outlined, size: 16),
+                ),
+              ],
+              selected: {_useMinutes},
+              onSelectionChanged: (v) => setState(() {
+                _useMinutes = v.first;
+                _error = null;
+              }),
+              showSelectedIcon: false,
+            ),
+            if (_useMinutes) ...[
+              const SizedBox(height: AppDimens.spacing16),
+              TextField(
+                controller: _minutesController,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() => _error = null),
+                onSubmitted: (_) => _submit(),
+                decoration: InputDecoration(
+                  labelText: 'Trial length (minutes)',
+                  helperText: 'For testing the lock screen',
+                  errorText: _error,
+                  prefixIcon: const Icon(Icons.timer_outlined),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Start trial')),
       ],
     );
   }

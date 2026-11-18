@@ -32,7 +32,7 @@ class TrialStatusBadge extends StatelessWidget {
       ),
       ShopTrialState.active => (
         Icons.hourglass_top_rounded,
-        _activeLabel(trial.daysLeftAt(now)),
+        _activeLabel(trial.daysLeftAt(now), trial.endsAt?.difference(now)),
         colorScheme.onPrimaryContainer,
         colorScheme.primaryContainer.withValues(alpha: 0.6),
       ),
@@ -54,8 +54,14 @@ class TrialStatusBadge extends StatelessWidget {
     );
   }
 
-  String _activeLabel(int? daysLeft) {
+  String _activeLabel(int? daysLeft, Duration? remaining) {
     if (daysLeft == null) return compact ? 'Trial' : 'Trial active: starting…';
+    // Short (e.g. test) trials: show minutes instead of "1 day left".
+    if (remaining != null && remaining < const Duration(days: 1)) {
+      final mins = (remaining.inSeconds / 60).ceil().clamp(1, 1440);
+      final text = mins >= 60 ? '${mins ~/ 60}h ${mins % 60}m' : '${mins}m';
+      return compact ? 'Trial: $text left' : 'Trial active: $text left';
+    }
     final unit = daysLeft == 1 ? 'day' : 'days';
     return compact
         ? 'Trial: ${daysLeft}d left'

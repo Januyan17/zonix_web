@@ -423,6 +423,15 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     );
   }
 
+  /// Starts a trial of an exact length (minutes), mainly for testing.
+  Future<void> _startTrialFor(Duration length) {
+    return _saveAndReload(
+      () => _service.startTrialFor(_slug, length),
+      failure: 'Failed to start trial',
+      success: (end) => 'Free trial started, ends ${formatShortDateTime(end)}',
+    );
+  }
+
   Future<void> _saveTrialDetails(TrialDetailsResult details) {
     return _saveAndReload(
       () => _service.setTrialDetails(
@@ -791,6 +800,10 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
           child: ListView(
             padding: AppDimens.paddingAll20,
             children: [
+              // Users come first so role and sign-in changes are reachable
+              // without scrolling.
+              ..._buildUsers(),
+              _sectionGap,
               ShopSummaryCard(
                 shop: shop,
                 staffCount: _users
@@ -814,6 +827,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
               TrialSection(
                 shop: shop,
                 onToggle: _toggleTrial,
+                onStartFor: _startTrialFor,
                 onSaveDetails: _saveTrialDetails,
                 onExtend: _extendTrial,
               ),
@@ -865,8 +879,6 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                   fontSize: AppDimens.fontLabel,
                 ),
               ),
-              _sectionGap,
-              ..._buildUsers(),
               _sectionGap,
               TapToLoadSection(
                 icon: Icons.phonelink_lock_rounded,

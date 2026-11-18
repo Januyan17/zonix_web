@@ -100,11 +100,7 @@ class UserCard extends StatelessWidget {
     final actionsRow = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _RolePill(
-          role: user.role,
-          isOwner: isOwner,
-          onChanged: onRoleChanged,
-        ),
+        _RolePill(role: user.role, isOwner: isOwner, onChanged: onRoleChanged),
         const SizedBox(width: 6),
         Tooltip(
           message: user.isEnabled
@@ -112,10 +108,7 @@ class UserCard extends StatelessWidget {
               : 'Sign-in disabled · tap to enable',
           child: Transform.scale(
             scale: 0.8,
-            child: Switch(
-              value: user.isEnabled,
-              onChanged: onEnabledChanged,
-            ),
+            child: Switch(value: user.isEnabled, onChanged: onEnabledChanged),
           ),
         ),
         PopupMenuButton<String>(
@@ -246,9 +239,7 @@ class _RolePill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            isOwner
-                ? Icons.workspace_premium_outlined
-                : Icons.badge_outlined,
+            isOwner ? Icons.workspace_premium_outlined : Icons.badge_outlined,
             size: 15,
             color: fg,
           ),

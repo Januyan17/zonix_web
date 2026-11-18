@@ -297,6 +297,20 @@ class ShopService {
     });
   }
 
+  /// Starts a trial that ends after an exact [length] (e.g. a few minutes,
+  /// for testing the lock). Uses trial_ends_at, which the app reads ahead
+  /// of trial_started_at + trial_days.
+  Future<DateTime> startTrialFor(String slug, Duration length) async {
+    final end = DateTime.now().add(length);
+    await _firestore.collection('shops').doc(slug).update({
+      'trial_enabled': true,
+      'trial_started_at': FieldValue.serverTimestamp(),
+      'trial_days': kDefaultTrialDays,
+      'trial_ends_at': Timestamp.fromDate(end),
+    });
+    return end;
+  }
+
   /// Turns the trial off (the shop has paid), unlocking the mobile app
   /// live. The date fields are left in place as history.
   Future<void> endTrial(String slug) async {
