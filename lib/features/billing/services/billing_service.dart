@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:zonixweb/core/utils/error_utils.dart';
 import 'package:zonixweb/features/billing/models/shop_billing.dart';
+import 'package:zonixweb/features/shops/services/shop_directory.dart';
 
 /// One shop's billing, with the name/slug needed to list it.
 class ShopBillingEntry {
@@ -134,24 +134,26 @@ class BillingService {
   }
 }
 
-/// One shared live listener on [BillingService.watchAll], for the nav badge
-/// and the Payments screen alike, so switching pages doesn't re-subscribe.
-/// Same lifecycle as PendingHistoryRequests: subscribes with the first
-/// listener, cancels (and forgets the data) when the last one goes.
+/// Live billing for every shop, for the nav badge and the Payments screen
+/// alike. Derived from [ShopDirectory]'s single `admin_shop_index`
+/// listener (billing lives on those docs), so it costs no reads of its own
+/// — previously it opened a second listener on the same collection.
+/// Same lifecycle as PendingHistoryRequests: attaches with the first
+/// listener, detaches (and forgets the data) when the last one goes.
 class ShopBillingOverview extends ChangeNotifier {
   ShopBillingOverview._();
 
   static final instance = ShopBillingOverview._();
 
-  BillingService? _service;
-  StreamSubscription<List<ShopBillingEntry>>? _subscription;
+  final ShopDirectory _directory = ShopDirectory.instance;
+  bool _attached = false;
+  int _seenRevision = -1;
 
   List<ShopBillingEntry>? _entries;
-  String? _error;
 
   List<ShopBillingEntry>? get entries => _entries;
-  String? get error => _error;
-  bool get loading => _entries == null && _error == null;
+  String? get error => _directory.error;
+  bool get loading => _entries == null && error == null;
 
   /// Shops that are overdue, due today or due soon.
   int get attentionCount {
@@ -173,38 +175,44 @@ class ShopBillingOverview extends ChangeNotifier {
   }
 
   void _start() {
-    if (_subscription != null) return;
-    try {
-      _service ??= BillingService();
-      _subscription = _service!.watchAll().listen(
-        (entries) {
-          _entries = entries;
-          _error = null;
-          notifyListeners();
-        },
-        onError: (Object e) {
-          _error = describeError(e);
-          notifyListeners();
-        },
-      );
-    } catch (e) {
-      _error = describeError(e);
+    if (_attached) return;
+    _attached = true;
+    _directory.addListener(_onDirectory);
+    _onDirectory();
+  }
+
+  /// Rebuilds the entries only when the index itself changed — shop
+  /// document updates don't touch billing.
+  void _onDirectory() {
+    final revision = _directory.indexRevision;
+    final docs = _directory.indexDocs;
+    final errorChanged = _directory.error != null;
+    if (revision == _seenRevision && !errorChanged) return;
+    _seenRevision = revision;
+    if (docs == null) {
+      _entries = null;
+    } else {
+      // Firestore's own (document id) order, as the old listener returned.
+      final sorted = [...docs]..sort((a, b) => a.id.compareTo(b.id));
+      _entries = [
+        for (final d in sorted)
+          ShopBillingEntry(
+            slug: d.id,
+            name: d.data()['name'] as String? ?? d.id,
+            billing: ShopBilling.fromMap(d.data()),
+          ),
+      ];
     }
+    notifyListeners();
   }
 
   void _stop() {
-    _subscription?.cancel();
-    _subscription = null;
+    if (!_attached) return;
+    _attached = false;
+    _directory.removeListener(_onDirectory);
     _entries = null;
-    _error = null;
+    _seenRevision = -1;
   }
 
-  void retry() {
-    _subscription?.cancel();
-    _subscription = null;
-    _entries = null;
-    _error = null;
-    notifyListeners();
-    if (hasListeners) _start();
-  }
+  void retry() => _directory.retry();
 }

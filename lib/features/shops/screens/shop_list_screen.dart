@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/widgets/empty_state.dart';
@@ -6,10 +5,10 @@ import 'package:zonixweb/core/widgets/page_container.dart';
 import 'package:zonixweb/core/widgets/page_header.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
 import 'package:zonixweb/features/shell/widgets/admin_shell.dart';
-import 'package:zonixweb/features/shops/models/shop.dart';
 import 'package:zonixweb/features/shops/models/shop_list_entry.dart';
 import 'package:zonixweb/features/shops/screens/create_shop_screen.dart';
 import 'package:zonixweb/features/shops/screens/shop_detail_screen.dart';
+import 'package:zonixweb/features/shops/services/shop_directory.dart';
 import 'package:zonixweb/features/shops/services/shop_service.dart';
 import 'package:zonixweb/features/shops/widgets/shop_list_summary.dart';
 import 'package:zonixweb/features/shops/widgets/shop_tile.dart';
@@ -32,45 +31,18 @@ class _ShopListScreenState extends State<ShopListScreen> {
   AuthService get authService => widget.authService;
   ShopService get shopService => widget.shopService;
 
-  late final Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
-  _indexStream = shopService.watchShopIndex();
+  /// The shared live shop data. The nav is already listening to it for
+  /// its badges, so this page adds no reads of its own; shop documents are
+  /// live, so a status change or delete made on the detail page shows up
+  /// here without a re-read.
+  final ShopDirectory _directory = ShopDirectory.instance;
 
-  /// Shop documents already fetched, by slug. Each is read once and kept,
-  /// so a rebuild (a window resize, say) costs no extra reads.
-  final Map<String, Shop?> _shops = {};
-  final Set<String> _inFlight = {};
-
-  /// Fetches the shops in [slugs] that aren't loaded or loading yet. Safe
-  /// to call from build: it never calls setState synchronously.
-  void _ensureLoaded(Iterable<String> slugs) {
-    for (final slug in slugs) {
-      if (_shops.containsKey(slug) || _inFlight.contains(slug)) continue;
-      _fetch(slug);
-    }
-  }
-
-  Future<void> _fetch(String slug) async {
-    _inFlight.add(slug);
-    try {
-      final shop = await shopService.getShop(slug);
-      if (mounted) setState(() => _shops[slug] = shop);
-    } catch (_) {
-      // Left unloaded; the tile keeps its placeholder.
-    } finally {
-      _inFlight.remove(slug);
-    }
-  }
-
-  /// The detail page can toggle a shop's status or delete it, so the one
-  /// shop that was just opened is re-read on return — a single read rather
-  /// than the whole list.
-  Future<void> _openShop(String slug) async {
-    await Navigator.of(context).push(
+  void _openShop(String slug) {
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ShopDetailScreen(slug: slug, shopService: shopService),
       ),
     );
-    if (mounted) _fetch(slug);
   }
 
   void _createShop() {
@@ -92,16 +64,16 @@ class _ShopListScreenState extends State<ShopListScreen> {
         label: const Text('Create shop'),
         onPressed: _createShop,
       ),
-      body: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
-        stream: _indexStream,
-        builder: (context, indexSnapshot) {
-          if (indexSnapshot.hasError) {
-            return Center(child: Text('Error: ${indexSnapshot.error}'));
+      body: ListenableBuilder(
+        listenable: _directory,
+        builder: (context, _) {
+          if (_directory.error != null) {
+            return Center(child: Text('Error: ${_directory.error}'));
           }
-          if (!indexSnapshot.hasData) {
+          final docs = _directory.indexDocs;
+          if (docs == null) {
             return const Center(child: CircularProgressIndicator());
           }
-          final docs = indexSnapshot.data!;
           if (docs.isEmpty) {
             return PageContainer(
               child: EmptyState(
@@ -117,14 +89,13 @@ class _ShopListScreenState extends State<ShopListScreen> {
             );
           }
 
-          _ensureLoaded(docs.map((d) => d.id));
-          final allLoaded = docs.every((d) => _shops.containsKey(d.id));
+          final allLoaded = docs.every((d) => _directory.isShopLoaded(d.id));
           final entries = [
             for (final doc in docs)
               ShopListEntry(
                 slug: doc.id,
                 indexedName: doc.data()['name'] as String? ?? doc.id,
-                shop: _shops[doc.id],
+                shop: _directory.shop(doc.id),
               ),
           ];
 

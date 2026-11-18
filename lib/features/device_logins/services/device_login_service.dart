@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:zonixweb/features/device_logins/models/device_login.dart';
+import 'package:zonixweb/features/device_logins/models/device_session.dart';
 
 /// One page of [DeviceLogin]s plus the cursor to fetch the next one.
 class DeviceLoginPage {
@@ -61,5 +62,60 @@ class DeviceLoginService {
       cursor: docs.isEmpty ? null : docs.last,
       hasMore: docs.length == limit,
     );
+  }
+
+  /// Permanently deletes `device_logins` documents by id — history only;
+  /// live sessions are untouched, so nobody is signed out. Rules allow this
+  /// for platform super admins only. Batched in chunks under Firestore's
+  /// 500-writes-per-batch limit.
+  Future<void> deleteLogins(Iterable<String> ids) async {
+    final all = ids.toList();
+    for (var i = 0; i < all.length; i += 450) {
+      final batch = _firestore.batch();
+      for (final id in all.skip(i).take(450)) {
+        batch.delete(_logins.doc(id));
+      }
+      await batch.commit();
+    }
+  }
+
+  /// The user's live sign-ins in one shop. Small by construction — the
+  /// mobile app trims it to the shop's active-device limit (usually 1-2) —
+  /// so this costs about one read per person (an empty result still bills
+  /// one read).
+  Future<List<DeviceSession>> fetchActiveSessions({
+    required String shopId,
+    required String userId,
+  }) async {
+    final snapshot = await _firestore
+        .collection('shops/$shopId/users/$userId/sessions')
+        .get();
+    return snapshot.docs.map(DeviceSession.fromSnapshot).toList();
+  }
+
+  /// [fetchActiveSessions] for each `shopId/userId` key, in parallel.
+  /// A failed lookup leaves that key out rather than failing the rest, so
+  /// those devices show as "status unknown" instead of breaking the page.
+  Future<Map<String, List<DeviceSession>>> fetchActiveSessionsFor(
+    Iterable<String> userKeys,
+  ) async {
+    final entries = await Future.wait(
+      userKeys.map((key) async {
+        final slash = key.indexOf('/');
+        try {
+          final sessions = await fetchActiveSessions(
+            shopId: key.substring(0, slash),
+            userId: key.substring(slash + 1),
+          );
+          return MapEntry(key, sessions);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    return {
+      for (final e in entries)
+        if (e != null) e.key: e.value,
+    };
   }
 }

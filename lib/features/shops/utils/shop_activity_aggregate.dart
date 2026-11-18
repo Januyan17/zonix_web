@@ -73,7 +73,14 @@ bool _inRange(Map<String, dynamic> data, StatsDateRange? range) {
 /// which keeps this immune to any timezone mismatch between how the mobile
 /// app serializes dates and how a server-side range query would need to
 /// bound them.
-ShopStats statsFrom(ShopActivity activity, {StatsDateRange? range}) {
+/// [productCount], when given, replaces the count taken from
+/// `activity.products` — for callers that counted the catalog server-side
+/// instead of downloading it.
+ShopStats statsFrom(
+  ShopActivity activity, {
+  StatsDateRange? range,
+  int? productCount,
+}) {
   double sumField(List<ActivityDoc> docs, String field) {
     var total = 0.0;
     for (final doc in docs) {
@@ -125,7 +132,7 @@ ShopStats statsFrom(ShopActivity activity, {StatsDateRange? range}) {
     totalCogs: items.cogs,
     totalExpenses: sumField(activity.expenses, 'amount'),
     totalAdditionalIncome: sumField(activity.additionalIncome, 'amount'),
-    productCount: countActive(activity.products),
+    productCount: productCount ?? countActive(activity.products),
     unitsSold: items.units,
   );
 }

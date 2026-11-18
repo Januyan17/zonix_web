@@ -8,6 +8,7 @@ import 'package:zonixweb/core/utils/snackbar.dart';
 import 'package:zonixweb/core/widgets/delete_confirm_dialog.dart';
 import 'package:zonixweb/core/widgets/keep_alive_wrapper.dart';
 import 'package:zonixweb/core/widgets/section_header.dart';
+import 'package:zonixweb/core/widgets/tap_to_load_section.dart';
 import 'package:zonixweb/features/billing/widgets/shop_payments_tab.dart';
 import 'package:zonixweb/features/device_logins/widgets/recent_device_logins_section.dart';
 import 'package:zonixweb/features/history_requests/widgets/history_requests_section.dart';
@@ -76,6 +77,13 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   VoidStats? _voids;
   List<DailyStat>? _dailySeries;
   List<Product> _products = [];
+
+  /// The raw catalog, null until the admin opens the Products section.
+  /// Downloading it is one read per product, so it's never done on entry;
+  /// [_productCount] (a server-side count, ~2 reads) fills the tiles until
+  /// then.
+  List<ActivityDoc>? _productDocs;
+  int? _productCount;
   bool _loading = true;
   bool _statsLoading = true;
   bool _seriesLoading = true;
@@ -94,6 +102,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     super.initState();
     _load();
     _loadActivity();
+    _loadProductCount();
   }
 
   Future<void> _selectFilter(ShopDateFilter filter) async {
@@ -137,14 +146,16 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
   }
 
-  Future<void> _load() async {
+  /// [includeUsers] false re-reads only the shop document — enough after a
+  /// settings change, which never touches the users subcollection.
+  Future<void> _load({bool includeUsers = true}) async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final shop = await _service.getShop(_slug);
-      final users = await _service.getShopUsers(_slug);
+      final users = includeUsers ? await _service.getShopUsers(_slug) : _users;
       if (mounted) {
         setState(() {
           _shop = shop;
@@ -168,20 +179,23 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     setState(() {
       _statsLoading = true;
       _seriesLoading = true;
-      _productsLoading = true;
     });
     try {
       final window = _selection.activityWindow();
-      final activity = await _service.getShopActivity(
+      // The catalog is left out: it's fetched only when the Products
+      // section is opened, and carried over from then on.
+      final fetched = await _service.getShopActivity(
         _slug,
         from: window.from,
         to: window.to,
+        includeProducts: false,
       );
+      final productDocs = _productDocs;
+      final activity = productDocs == null
+          ? fetched
+          : fetched.withProducts(productDocs);
       if (mounted) {
-        setState(() {
-          _activity = activity;
-          _products = productsFrom(activity.products);
-        });
+        setState(() => _activity = activity);
         _applyFilter();
       }
     } catch (_) {
@@ -192,7 +206,6 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
         setState(() {
           _statsLoading = false;
           _seriesLoading = false;
-          _productsLoading = false;
         });
       }
     }
@@ -206,7 +219,11 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     final (start, end, _) = _selection.chartWindow();
     final range = _selection.range();
     setState(() {
-      _stats = statsFrom(activity, range: range);
+      _stats = statsFrom(
+        activity,
+        range: range,
+        productCount: _productDocs == null ? _productCount : null,
+      );
       _comparison = comparisonFrom(activity, range: range);
       _dailySeries = dailySeriesFrom(activity, start: start, end: end);
       _performance = productPerformanceFrom(activity, range: range);
@@ -226,15 +243,32 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
       final docs = await _service.getProductDocs(_slug);
       if (mounted) {
         setState(() {
+          _productDocs = docs;
           _products = productsFrom(docs);
+          _productCount = _products.length;
           _activity = _activity?.withProducts(docs);
         });
+        // Re-derive the tiles and the unsold-products list now that the
+        // catalog is in hand.
+        _applyFilter();
       }
     } catch (_) {
       // Products are supplementary; a failure here shouldn't block the rest
       // of the page from showing.
     } finally {
       if (mounted) setState(() => _productsLoading = false);
+    }
+  }
+
+  /// The product-count tile's figure without downloading the catalog.
+  Future<void> _loadProductCount() async {
+    try {
+      final count = await _service.countLiveProducts(_slug);
+      if (!mounted || _productDocs != null) return;
+      setState(() => _productCount = count);
+      _applyFilter();
+    } catch (_) {
+      // Supplementary; the tile just reads 0 until the catalog is opened.
     }
   }
 
@@ -247,7 +281,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   }) async {
     try {
       final result = await action();
-      await _load();
+      await _load(includeUsers: false);
       if (mounted && success != null) {
         showSnackBarMessage(context, success(result));
       }
@@ -677,7 +711,11 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     if (shop == null) return const Center(child: Text('Shop not found.'));
 
     return RefreshIndicator(
-      onRefresh: () => Future.wait([_load(), _loadActivity()]),
+      onRefresh: () => Future.wait([
+        _load(),
+        _loadActivity(),
+        _productDocs == null ? _loadProductCount() : _loadProducts(),
+      ]),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: AppDimens.pageMaxWidth),
@@ -689,7 +727,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                 staffCount: _users
                     .where((u) => u.role == 'staff' && !u.isDeleted)
                     .length,
-                productCount: _stats?.productCount ?? 0,
+                productCount: _stats?.productCount ?? _productCount ?? 0,
                 onEditStaffLimit: _editStaffLimit,
                 onEditProductLimit: _editProductLimit,
                 onEditMaxActiveDevices: _editMaxActiveDevices,
@@ -761,13 +799,26 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
               _sectionGap,
               ..._buildUsers(),
               _sectionGap,
-              RecentDeviceLoginsSection(shopId: _slug, shopService: _service),
+              TapToLoadSection(
+                icon: Icons.phonelink_lock_rounded,
+                label: 'Recent device logins',
+                builder: (_) => RecentDeviceLoginsSection(
+                  shopId: _slug,
+                  shopService: _service,
+                ),
+              ),
               _sectionGap,
-              HistoryRequestsSection(shopId: _slug),
+              TapToLoadSection(
+                icon: Icons.manage_history_rounded,
+                label: 'History requests',
+                builder: (_) => HistoryRequestsSection(shopId: _slug),
+              ),
               _sectionGap,
               SectionHeader(
                 icon: Icons.inventory_2_outlined,
-                label: 'Products (${_products.length})',
+                label: _productDocs != null
+                    ? 'Products (${_products.length})'
+                    : 'Products (${_productCount ?? '…'})',
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -780,7 +831,10 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                     const SizedBox(width: AppDimens.spacing4),
                     Switch(
                       value: _showProducts,
-                      onChanged: (v) => setState(() => _showProducts = v),
+                      onChanged: (v) {
+                        setState(() => _showProducts = v);
+                        if (v && _productDocs == null) _loadProducts();
+                      },
                     ),
                   ],
                 ),

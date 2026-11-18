@@ -3,13 +3,16 @@ import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/utils/error_utils.dart';
 import 'package:zonixweb/core/widgets/section_header.dart';
 import 'package:zonixweb/features/device_logins/models/device_login.dart';
+import 'package:zonixweb/features/device_logins/models/device_session.dart';
 import 'package:zonixweb/features/device_logins/screens/device_logins_screen.dart';
 import 'package:zonixweb/features/device_logins/services/device_login_service.dart';
-import 'package:zonixweb/features/device_logins/utils/device_login_badges.dart';
-import 'package:zonixweb/features/device_logins/widgets/device_login_tile.dart';
+import 'package:zonixweb/features/device_logins/utils/device_grouping.dart';
+import 'package:zonixweb/features/device_logins/widgets/delete_device_history.dart';
+import 'package:zonixweb/features/device_logins/widgets/device_group_tile.dart';
 import 'package:zonixweb/features/shops/services/shop_service.dart';
 
-/// The shop's last few first-logins-per-install, with a link to the full
+/// The shop's most recently installed devices (from its last few installs,
+/// reinstalls folded together) with signed-in status, and a link to the full
 /// Device logins screen filtered to this shop. Self-contained: it does its
 /// own single read (no listener) and a failure here never affects the rest
 /// of the shop page.
@@ -36,7 +39,8 @@ class _RecentDeviceLoginsSectionState extends State<RecentDeviceLoginsSection> {
   late final DeviceLoginService _service =
       widget.deviceLoginService ?? DeviceLoginService();
 
-  List<DeviceLogin> _logins = const [];
+  List<DeviceGroup> _groups = const [];
+  Map<String, List<DeviceSession>> _sessions = const {};
   bool _loading = true;
   String? _error;
 
@@ -56,7 +60,18 @@ class _RecentDeviceLoginsSectionState extends State<RecentDeviceLoginsSection> {
         shopId: widget.shopId,
         limit: RecentDeviceLoginsSection.count,
       );
-      if (mounted) setState(() => _logins = page.logins);
+      final groups = groupDeviceLogins(page.logins);
+      // Waited for here rather than streamed in: it's a handful of people
+      // and keeps the section to one loading state.
+      final sessions = await _service.fetchActiveSessionsFor(
+        userKeysOf(groups),
+      );
+      if (mounted) {
+        setState(() {
+          _groups = groups;
+          _sessions = sessions;
+        });
+      }
     } catch (e) {
       // Shown verbatim: a missing composite index fails with a message that
       // contains the link to create it.
@@ -64,6 +79,15 @@ class _RecentDeviceLoginsSectionState extends State<RecentDeviceLoginsSection> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _delete(List<DeviceLogin> installs) async {
+    final deleted = await confirmAndDeleteDeviceHistory(
+      context,
+      service: _service,
+      installs: installs,
+    );
+    if (deleted && mounted) _load();
   }
 
   void _viewAll() {
@@ -124,7 +148,7 @@ class _RecentDeviceLoginsSectionState extends State<RecentDeviceLoginsSection> {
         ),
       );
     }
-    if (_logins.isEmpty) {
+    if (_groups.isEmpty) {
       return Padding(
         padding: AppDimens.paddingAll20,
         child: Text(
@@ -133,15 +157,16 @@ class _RecentDeviceLoginsSectionState extends State<RecentDeviceLoginsSection> {
         ),
       );
     }
-    final repeats = repeatInstallKeys(_logins);
     return Column(
       children: [
-        for (var i = 0; i < _logins.length; i++) ...[
+        for (var i = 0; i < _groups.length; i++) ...[
           if (i > 0) const Divider(height: 1),
-          DeviceLoginTile(
-            login: _logins[i],
+          DeviceGroupTile(
+            key: ValueKey(_groups[i].key),
+            group: _groups[i],
+            sessions: _sessions[_groups[i].userKey],
             showShop: false,
-            repeatInstall: isRepeatInstall(_logins[i], repeats),
+            onDelete: _delete,
           ),
         ],
       ],

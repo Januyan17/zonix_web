@@ -1,10 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zonixweb/features/device_logins/models/device_login.dart';
+import 'package:zonixweb/features/device_logins/models/device_session.dart';
+import 'package:zonixweb/features/device_logins/utils/device_grouping.dart';
 import 'package:zonixweb/features/device_logins/utils/device_login_badges.dart';
-
-DeviceLogin login(String id, {String shopId = 's1', String userId = 'u1'}) =>
-    DeviceLogin(id: id, shopId: shopId, userId: userId);
 
 void main() {
   group('DeviceLogin.fromMap', () {
@@ -103,35 +102,160 @@ void main() {
     });
   });
 
-  group('repeat install', () {
-    test('flags every row of a shop+user seen more than once', () {
-      final logins = [login('a'), login('b', userId: 'u2'), login('c')];
-      final keys = repeatInstallKeys(logins);
-      expect(keys, {'s1/u1'});
-      expect(isRepeatInstall(logins[0], keys), isTrue);
-      expect(isRepeatInstall(logins[1], keys), isFalse);
-      expect(isRepeatInstall(logins[2], keys), isTrue);
+  group('groupDeviceLogins', () {
+    DeviceLogin install(
+      String id, {
+      String shopId = 's1',
+      String userId = 'u1',
+      String deviceId = '',
+      String deviceName = 'Xiaomi 2201117TG',
+      String platform = 'android',
+    }) => DeviceLogin(
+      id: id,
+      shopId: shopId,
+      userId: userId,
+      deviceId: deviceId.isEmpty ? 'dev-$id' : deviceId,
+      deviceName: deviceName,
+      platform: platform,
+    );
+
+    test('folds reinstalls on the same phone into one group, newest first', () {
+      final groups = groupDeviceLogins([
+        install('a', deviceName: 'Google Pixel 10'),
+        install('b'),
+        install('c'),
+        install('d'),
+      ]);
+      expect(groups, hasLength(2));
+      expect(groups[0].latest.id, 'a');
+      expect(groups[1].installs.map((l) => l.id), ['b', 'c', 'd']);
+      expect(groups[1].installCount, 3);
+      expect(groups[1].earliest.id, 'd');
     });
 
-    test('the same user in different shops is not a repeat', () {
-      final logins = [login('a', shopId: 's1'), login('b', shopId: 's2')];
-      expect(repeatInstallKeys(logins), isEmpty);
+    test('model name match ignores case but not platform, user or shop', () {
+      final groups = groupDeviceLogins([
+        install('a', deviceName: 'XIAOMI 2201117TG'),
+        install('b'),
+        install('c', platform: 'ios'),
+        install('d', userId: 'u2'),
+        install('e', shopId: 's2'),
+      ]);
+      expect(groups.map((g) => g.installCount), [2, 1, 1, 1]);
     });
 
-    test('rows missing shop_id or user_id never match', () {
-      final logins = [
-        login('a', userId: ''),
-        login('b', userId: ''),
-        login('c', shopId: ''),
-        login('d', shopId: ''),
-      ];
-      final keys = repeatInstallKeys(logins);
-      expect(keys, isEmpty);
-      expect(logins.any((l) => isRepeatInstall(l, keys)), isFalse);
+    test('the same install reported twice counts once, keeping the oldest', () {
+      final group = groupDeviceLogins([
+        install('newer-report', deviceId: 'dev-x'),
+        install('other-install', deviceId: 'dev-y'),
+        install('first-report', deviceId: 'dev-x'),
+      ]).single;
+      expect(group.installCount, 2);
+      expect(group.installs.map((l) => l.id), [
+        'other-install',
+        'first-report',
+      ]);
+      // A delete still removes the hidden repeat.
+      expect(group.records, hasLength(3));
+      expect(group.recordsOf(group.installs.last).map((l) => l.id), [
+        'newer-report',
+        'first-report',
+      ]);
     });
 
-    test('empty list has no repeats', () {
-      expect(repeatInstallKeys(const []), isEmpty);
+    test('rows without a model name never merge', () {
+      final groups = groupDeviceLogins([
+        install('a', deviceName: ''),
+        install('b', deviceName: ''),
+      ]);
+      expect(groups, hasLength(2));
+    });
+
+    test('rows missing shop or user never merge with each other', () {
+      final groups = groupDeviceLogins([
+        install('a', userId: ''),
+        install('b', userId: ''),
+      ]);
+      expect(groups, hasLength(2));
+      expect(groups.first.userKey, isNull);
+      expect(userKeysOf(groups), isEmpty);
+    });
+
+    test('userKeysOf is one key per person per shop', () {
+      final groups = groupDeviceLogins([
+        install('a', deviceName: 'Pixel'),
+        install('b'),
+        install('c', userId: 'u2'),
+      ]);
+      expect(userKeysOf(groups), {'s1/u1', 's1/u2'});
+    });
+  });
+
+  group('DeviceGroup.activeSessionIn', () {
+    final group = groupDeviceLogins([
+      const DeviceLogin(
+        id: 'a',
+        shopId: 's1',
+        userId: 'u1',
+        deviceId: 'new',
+        deviceName: 'Pixel',
+      ),
+      const DeviceLogin(
+        id: 'b',
+        shopId: 's1',
+        userId: 'u1',
+        deviceId: 'old',
+        deviceName: 'Pixel',
+      ),
+    ]).single;
+
+    test('null sessions means unknown, not signed out', () {
+      expect(group.activeSessionIn(null), isNull);
+    });
+
+    test('matches a session on any install of the device', () {
+      final s = group.activeSessionIn([
+        DeviceSession(deviceId: 'other', loggedInAt: DateTime(2026, 11, 15)),
+        DeviceSession(deviceId: 'old', loggedInAt: DateTime(2026, 11, 14)),
+      ]);
+      expect(s?.deviceId, 'old');
+    });
+
+    test('picks the most recent login when several installs are live', () {
+      final s = group.activeSessionIn([
+        DeviceSession(deviceId: 'old', loggedInAt: DateTime(2026, 11, 14)),
+        DeviceSession(deviceId: 'new', loggedInAt: DateTime(2026, 11, 15)),
+      ]);
+      expect(s?.deviceId, 'new');
+    });
+
+    test('no matching session means signed out', () {
+      expect(
+        group.activeSessionIn([const DeviceSession(deviceId: 'other')]),
+        isNull,
+      );
+    });
+  });
+
+  group('DeviceSession.fromMap', () {
+    test('falls back to the document id and tolerates bad fields', () {
+      final s = DeviceSession.fromMap('doc-id', {
+        'device_name': 3,
+        'logged_in_at': 'nope',
+      });
+      expect(s.deviceId, 'doc-id');
+      expect(s.deviceName, '');
+      expect(s.loggedInAt, isNull);
+    });
+
+    test('parses a Timestamp', () {
+      final at = DateTime.utc(2026, 11, 14, 18, 0);
+      final s = DeviceSession.fromMap('x', {
+        'device_id': 'dev-1',
+        'logged_in_at': Timestamp.fromDate(at),
+      });
+      expect(s.deviceId, 'dev-1');
+      expect(s.loggedInAt!.isAtSameMomentAs(at), isTrue);
     });
   });
 }

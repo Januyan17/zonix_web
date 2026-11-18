@@ -5,14 +5,20 @@ import 'package:zonixweb/core/widgets/page_header.dart';
 import 'package:zonixweb/features/app_version/services/app_version_service.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
 import 'package:zonixweb/features/device_logins/models/device_login.dart';
+import 'package:zonixweb/features/device_logins/models/device_session.dart';
 import 'package:zonixweb/features/device_logins/services/device_login_service.dart';
-import 'package:zonixweb/features/device_logins/utils/device_login_badges.dart';
-import 'package:zonixweb/features/device_logins/widgets/device_login_tile.dart';
+import 'package:zonixweb/features/device_logins/utils/device_grouping.dart';
+import 'package:zonixweb/features/device_logins/widgets/delete_device_history.dart';
+import 'package:zonixweb/features/device_logins/widgets/device_group_tile.dart';
 import 'package:zonixweb/features/shell/widgets/admin_shell.dart';
+import 'package:zonixweb/features/shops/services/shop_directory.dart';
 import 'package:zonixweb/features/shops/services/shop_service.dart';
 
-/// Lists first logins of mobile app installs (the `device_logins`
-/// collection), newest first, 25 at a time, optionally for one shop.
+/// Lists the devices people use the mobile app on, newest install first,
+/// optionally for one shop. Reads `device_logins` 25 installs at a time and
+/// folds reinstalls on the same phone into one row; each person's live
+/// sessions (one small read per person) say whether a device is signed in
+/// now and when it last logged in.
 ///
 /// Reached two ways: from the nav rail, as a top-level page inside the
 /// [AdminShell]; or pushed from a shop's detail page via
@@ -68,7 +74,18 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
   int? _minSupportedBuild;
 
   List<DeviceLogin> _logins = const [];
+  List<DeviceGroup> _groups = const [];
   DeviceLoginPage? _lastPage;
+
+  /// Live sessions per `shopId/userId`, fetched once per person per load
+  /// and kept across "Load more". A key absent from both maps after loading
+  /// means the lookup failed — shown as unknown status.
+  Map<String, List<DeviceSession>> _sessions = const {};
+  Set<String> _sessionsLoading = const {};
+
+  /// 'owner', 'staff', or null for everyone. Filters what's already loaded,
+  /// so switching costs no reads.
+  String? _role;
   bool _loading = true;
   bool _loadingMore = false;
   String? _error;
@@ -87,10 +104,11 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
   }
 
   /// The shop dropdown is filled from the portal's own shop index, read
-  /// once — the same source the Shops page lists from.
+  /// once — the same shared source the Shops page lists from, so it is
+  /// usually already loaded and costs no extra reads.
   Future<void> _loadShops() async {
     try {
-      final docs = await widget.shopService.watchShopIndex().first;
+      final docs = await ShopDirectory.instance.indexOnce();
       if (!mounted) return;
       setState(() {
         _shops = [
@@ -125,9 +143,12 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
       final page = await _service.fetchPage(shopId: _shopId);
       if (!mounted || generation != _generation) return;
       setState(() {
-        _logins = page.logins;
+        _setLogins(page.logins);
         _lastPage = page;
+        _sessions = const {};
+        _sessionsLoading = const {};
       });
+      _loadSessions(generation);
     } catch (e) {
       if (!mounted || generation != _generation) return;
       // Shown verbatim: a missing composite index fails with a message that
@@ -155,15 +176,53 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
       );
       if (!mounted || generation != _generation) return;
       setState(() {
-        _logins = [..._logins, ...page.logins];
+        _setLogins([..._logins, ...page.logins]);
         _lastPage = page;
       });
+      _loadSessions(generation);
     } catch (e) {
       if (!mounted || generation != _generation) return;
       setState(() => _moreError = describeError(e));
     } finally {
       if (mounted) setState(() => _loadingMore = false);
     }
+  }
+
+  void _setLogins(List<DeviceLogin> logins) {
+    _logins = logins;
+    _groups = groupDeviceLogins(logins);
+  }
+
+  /// Fetches sessions for people on screen whose status isn't known yet.
+  Future<void> _loadSessions(int generation) async {
+    final keys = userKeysOf(_groups)
+        .where(
+          (k) => !_sessions.containsKey(k) && !_sessionsLoading.contains(k),
+        )
+        .toSet();
+    if (keys.isEmpty) return;
+    setState(() => _sessionsLoading = {..._sessionsLoading, ...keys});
+    final result = await _service.fetchActiveSessionsFor(keys);
+    if (!mounted || generation != _generation) return;
+    setState(() {
+      _sessions = {..._sessions, ...result};
+      _sessionsLoading = _sessionsLoading.difference(keys);
+    });
+  }
+
+  Future<void> _delete(List<DeviceLogin> installs) async {
+    final deleted = await confirmAndDeleteDeviceHistory(
+      context,
+      service: _service,
+      installs: installs,
+    );
+    if (!deleted || !mounted) return;
+    final ids = {for (final l in installs) l.id};
+    // Dropped locally; the paging cursor stays valid because Firestore's
+    // startAfterDocument uses the snapshot's values, not its existence.
+    setState(
+      () => _setLogins(_logins.where((l) => !ids.contains(l.id)).toList()),
+    );
   }
 
   void _selectShop(String? shopId) {
@@ -200,11 +259,12 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const PageHeader(
-                  title: 'New device logins',
+                  title: 'Device logins',
                   subtitle:
-                      'The first login of each app install. A reinstall or '
-                      'cleared app data counts as a new install; logging out and '
-                      'back in on the same install does not.',
+                      'One row per phone, newest install first. Reinstalls on '
+                      'the same phone are folded in — tap a row to see them. '
+                      '"Signed in" means the app is logged in on that phone '
+                      'now; the time is its most recent login.',
                 ),
                 const SizedBox(height: AppDimens.spacing16),
                 _buildFilterRow(),
@@ -329,12 +389,48 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
       );
     }
 
-    final repeats = repeatInstallKeys(_logins);
+    int countRole(String role) =>
+        _groups.where((g) => g.latest.role.toLowerCase() == role).length;
+    final owners = countRole('owner');
+    final staff = countRole('staff');
+    final groups = _role == null
+        ? _groups
+        : _groups.where((g) => g.latest.role.toLowerCase() == _role).toList();
+    final signedIn = groups
+        .where((g) => g.activeSessionIn(_sessions[g.userKey]) != null)
+        .length;
+
+    Widget roleChip(String? role, String label, int count, IconData? icon) {
+      return ChoiceChip(
+        avatar: icon == null ? null : Icon(icon, size: AppDimens.iconSm),
+        label: Text('$label ($count)'),
+        selected: _role == role,
+        onSelected: (_) => setState(() => _role = role),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Wrap(
+          spacing: AppDimens.spacing8,
+          runSpacing: AppDimens.spacing8,
+          children: [
+            roleChip(null, 'All', _groups.length, null),
+            roleChip(
+              'owner',
+              'Owners',
+              owners,
+              Icons.admin_panel_settings_rounded,
+            ),
+            roleChip('staff', 'Staff', staff, Icons.badge_outlined),
+          ],
+        ),
+        const SizedBox(height: AppDimens.spacing12),
         Text(
-          '${_logins.length} loaded',
+          '${groups.length} device${groups.length == 1 ? '' : 's'}'
+          '${_sessionsLoading.isEmpty ? ' · $signedIn signed in' : ''}'
+          ' · ${_logins.length} install${_logins.length == 1 ? '' : 's'} loaded',
           style: Theme.of(
             context,
           ).textTheme.labelLarge?.copyWith(color: colorScheme.onSurfaceVariant),
@@ -342,22 +438,34 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
         const SizedBox(height: AppDimens.spacing8),
         Card(
           clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              for (var i = 0; i < _logins.length; i++) ...[
-                if (i > 0) const Divider(height: 1),
-                DeviceLoginTile(
-                  login: _logins[i],
-                  showShop: _shopId == null,
-                  oldBuild: isOldBuild(
-                    appBuild: _logins[i].appBuild,
-                    minSupportedBuild: _minSupportedBuild,
+          child: groups.isEmpty
+              ? Padding(
+                  padding: AppDimens.paddingAll20,
+                  child: Text(
+                    _role == 'owner'
+                        ? 'No owner devices in what\'s loaded.'
+                        : 'No staff devices in what\'s loaded.',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
                   ),
-                  repeatInstall: isRepeatInstall(_logins[i], repeats),
+                )
+              : Column(
+                  children: [
+                    for (var i = 0; i < groups.length; i++) ...[
+                      if (i > 0) const Divider(height: 1),
+                      DeviceGroupTile(
+                        key: ValueKey(groups[i].key),
+                        group: groups[i],
+                        sessions: _sessions[groups[i].userKey],
+                        sessionsLoading: _sessionsLoading.contains(
+                          groups[i].userKey,
+                        ),
+                        minSupportedBuild: _minSupportedBuild,
+                        showShop: _shopId == null,
+                        onDelete: _delete,
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ],
-          ),
         ),
         if (_moreError != null) ...[
           const SizedBox(height: AppDimens.spacing12),

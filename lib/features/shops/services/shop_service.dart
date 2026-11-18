@@ -116,6 +116,22 @@ class ShopService {
         .toList();
   }
 
+  /// Live (not soft-deleted) products, counted server-side: about two
+  /// reads however big the catalog is, where [getProductDocs] costs one
+  /// read per product. Same rule as productsFrom — everything minus the
+  /// docs whose `is_deleted` is literally true.
+  Future<int> countLiveProducts(String slug) async {
+    final products = _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products');
+    final counts = await Future.wait([
+      products.count().get(),
+      products.where('is_deleted', isEqualTo: true).count().get(),
+    ]);
+    return (counts[0].count ?? 0) - (counts[1].count ?? 0);
+  }
+
   /// A fresh product id, allocated client-side with no network call. Lets
   /// the caller upload the product's image (named after this id) before
   /// the Firestore doc itself is written.
