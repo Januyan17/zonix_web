@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/utils/shop_link_url.dart';
+import 'package:zonixweb/features/shops/utils/shop_link_url.dart';
 
 /// These rules are duplicated in the mobile app, which builds the URL each
 /// receipt QR code encodes. A change here that isn't mirrored there sends a

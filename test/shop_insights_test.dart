@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/shop_activity.dart';
-import 'package:zonixweb/models/shop_stats.dart';
-import 'package:zonixweb/utils/shop_activity_aggregate.dart';
+import 'package:zonixweb/features/shops/models/shop_activity.dart';
+import 'package:zonixweb/features/shops/models/shop_stats.dart';
+import 'package:zonixweb/features/shops/utils/shop_activity_aggregate.dart';
 
 /// The analytics layered on top of the totals — per-product performance,
 /// trading rhythm, voids, and the previous-period comparison. All of it is
@@ -321,7 +321,10 @@ void main() {
       // 2026-08-01 is a Saturday; 2026-08-03 a Monday.
       final days = weekdaySalesFrom(
         activity(
-          sales: [sale('2026-08-01T10:00:00', 10), sale('2026-08-03T10:00:00', 40)],
+          sales: [
+            sale('2026-08-01T10:00:00', 10),
+            sale('2026-08-03T10:00:00', 40),
+          ],
         ),
       );
 
@@ -359,7 +362,10 @@ void main() {
   group('precedingRange', () {
     test('is the same length, ending the day before', () {
       final previous = precedingRange(
-        StatsDateRange(start: DateTime(2026, 8, 10), end: DateTime(2026, 8, 16)),
+        StatsDateRange(
+          start: DateTime(2026, 8, 10),
+          end: DateTime(2026, 8, 16),
+        ),
       );
       expect(previous!.start, DateTime(2026, 8, 3));
       expect(previous.end, DateTime(2026, 8, 9));

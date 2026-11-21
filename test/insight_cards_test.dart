@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/product.dart';
-import 'package:zonixweb/models/shop_insights.dart';
-import 'package:zonixweb/models/shop_stats.dart';
-import 'package:zonixweb/screens/shop_detail/widgets/product_performance_card.dart';
-import 'package:zonixweb/screens/shop_detail/widgets/sales_rhythm_card.dart';
-import 'package:zonixweb/screens/shop_detail/widgets/stat_widgets.dart';
+import 'package:zonixweb/features/shops/models/product.dart';
+import 'package:zonixweb/features/shops/models/shop_insights.dart';
+import 'package:zonixweb/features/shops/models/shop_stats.dart';
+import 'package:zonixweb/features/shops/widgets/products/product_performance_card.dart';
+import 'package:zonixweb/features/shops/widgets/stats/sales_rhythm_card.dart';
+import 'package:zonixweb/features/shops/widgets/stats/stats_section.dart';
 
 /// Rendering checks for the analytics cards. Layout overflow and a null
 /// dereference in a rarely-hit branch both fail a widget test but neither
@@ -14,9 +14,7 @@ import 'package:zonixweb/screens/shop_detail/widgets/stat_widgets.dart';
 void main() {
   Widget host(Widget child) => MaterialApp(
     home: Scaffold(
-      body: SingleChildScrollView(
-        child: SizedBox(width: 900, child: child),
-      ),
+      body: SingleChildScrollView(child: SizedBox(width: 900, child: child)),
     ),
   );
 
@@ -49,10 +47,7 @@ void main() {
               productCount: 3,
               unitsSold: 6,
             ),
-            previousRange: StatsDateRange(
-              start: _aug3,
-              end: _aug9,
-            ),
+            previousRange: StatsDateRange(start: _aug3, end: _aug9),
           ),
           voids: const VoidStats(count: 1, value: 30, keptCount: 4),
         ),
