@@ -1,0 +1,8 @@
+{
+  "name": "zonix-admin-tools",
+  "private": true,
+  "description": "One-off admin scripts. Not part of the portal build.",
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

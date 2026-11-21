@@ -1,0 +1,762 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+import 'package:zonixweb/features/shops/models/product.dart';
+import 'package:zonixweb/features/shops/models/shop.dart';
+import 'package:zonixweb/features/shops/models/shop_activity.dart';
+import 'package:zonixweb/features/shops/models/shop_trial.dart';
+import 'package:zonixweb/features/shops/models/shop_user.dart';
+import 'package:zonixweb/features/shops/models/user_session.dart';
+import 'package:zonixweb/features/shops/services/trial_defaults_service.dart';
+import 'package:zonixweb/features/shops/utils/shop_activity_aggregate.dart';
+
+class ShopCodeTakenException implements Exception {
+  const ShopCodeTakenException();
+}
+
+class ShopCreationResult {
+  const ShopCreationResult({
+    required this.slug,
+    required this.ownerUsername,
+    required this.ownerPassword,
+  });
+
+  final String slug;
+  final String ownerUsername;
+  final String ownerPassword;
+}
+
+class ReissueLoginResult {
+  const ReissueLoginResult({required this.username, required this.password});
+
+  final String username;
+  final String password;
+}
+
+class ShopService {
+  ShopService({FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _shopIndex =>
+      _firestore.collection('admin_shop_index');
+
+  /// The portal's own index of shop slugs, since `shops` can't be listed
+  /// by security rule. Ordered newest-first.
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> watchShopIndex() {
+    return _shopIndex
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs);
+  }
+
+  Future<Shop?> getShop(String slug) async {
+    final doc = await _firestore.collection('shops').doc(slug).get();
+    if (!doc.exists) return null;
+    return Shop.fromMap(doc.data()!);
+  }
+
+  /// Currently-active login sessions for a shop user, newest first. Every
+  /// doc in this subcollection represents a device that's presently logged
+  /// in — there's no inactive state to filter out.
+  Future<List<UserSession>> getUserSessions({
+    required String slug,
+    required String uid,
+  }) async {
+    final snapshot = await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .collection('sessions')
+        .orderBy('logged_in_at', descending: true)
+        .get();
+    return snapshot.docs.map((d) => UserSession.fromMap(d.data())).toList();
+  }
+
+  /// Force-logs-out a single device: the mobile app listens to its own
+  /// session doc in real time and signs out immediately once it's deleted.
+  Future<void> deleteUserSession({
+    required String slug,
+    required String uid,
+    required String deviceId,
+  }) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .collection('sessions')
+        .doc(deviceId)
+        .delete();
+  }
+
+  Future<List<ShopUser>> getShopUsers(String slug) async {
+    final snapshot = await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .get();
+    return snapshot.docs.map((d) => ShopUser.fromMap(d.data())).toList();
+  }
+
+  /// The shop's raw product catalog. Callers map it with productsFrom,
+  /// which is also what turns the copy carried by [getShopActivity] into
+  /// [Product]s — one code path for both, so the two can never disagree on
+  /// ordering or on which products count as deleted.
+  Future<List<ActivityDoc>> getProductDocs(String slug) async {
+    final snapshot = await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .get();
+    return snapshot.docs
+        .map((d) => ActivityDoc(id: d.id, data: d.data()))
+        .toList();
+  }
+
+  /// Live (not soft-deleted) products, counted server-side: about two
+  /// reads however big the catalog is, where [getProductDocs] costs one
+  /// read per product. Same rule as productsFrom — everything minus the
+  /// docs whose `is_deleted` is literally true.
+  Future<int> countLiveProducts(String slug) async {
+    final products = _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products');
+    final counts = await Future.wait([
+      products.count().get(),
+      products.where('is_deleted', isEqualTo: true).count().get(),
+    ]);
+    return (counts[0].count ?? 0) - (counts[1].count ?? 0);
+  }
+
+  /// A fresh product id, allocated client-side with no network call. Lets
+  /// the caller upload the product's image (named after this id) before
+  /// the Firestore doc itself is written.
+  String newProductId(String slug) =>
+      _firestore.collection('shops').doc(slug).collection('products').doc().id;
+
+  /// Creates a product in the shop's catalog. [id] is pre-allocated by the
+  /// caller (rather than using .add()) so the same id can be used to name
+  /// the uploaded image in Supabase Storage before this write happens.
+  Future<void> addProduct({
+    required String slug,
+    required String id,
+    required String name,
+    String? description,
+    String? category,
+    String? sku,
+    double? price,
+    double? cost,
+    int? stock,
+    String? imageUrl,
+  }) async {
+    final product = Product(
+      id: id,
+      name: name,
+      description: description,
+      category: category,
+      sku: sku,
+      price: price,
+      cost: cost,
+      stock: stock,
+      imageUrl: imageUrl,
+      isDeleted: false,
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .doc(id)
+        .set(product.toMap());
+  }
+
+  Future<void> updateProduct({
+    required String slug,
+    required String id,
+    required String name,
+    String? description,
+    String? category,
+    String? sku,
+    double? price,
+    double? cost,
+    int? stock,
+    String? imageUrl,
+  }) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .doc(id)
+        .update({
+          'name': name,
+          'description': description,
+          'category': category,
+          'sku': sku,
+          'price': price,
+          'cost': cost,
+          'stock': stock,
+          'image_url': imageUrl,
+        });
+  }
+
+  Future<void> deleteProduct({required String slug, required String id}) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .doc(id)
+        .delete();
+  }
+
+  Future<void> setShopActive(String slug, bool isActive) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'is_active': isActive,
+    });
+  }
+
+  /// Controls whether the mobile/POS app shows a "Delete" option for staff
+  /// members. Defaults to false/off when unset on the shop document.
+  Future<void> setStaffDeleteEnabled(String slug, bool enabled) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'staff_delete_enabled': enabled,
+    });
+  }
+
+  /// Max number of devices staff/owner accounts can be signed in on at
+  /// once; the mobile app watches this doc live and signs out the oldest
+  /// session(s) for an affected account as soon as it's exceeded.
+  Future<void> setMaxActiveDevices(
+    String slug, {
+    required int staff,
+    required int owner,
+  }) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'max_active_devices_staff': staff,
+      'max_active_devices_owner': owner,
+    });
+  }
+
+  /// [limit] null means unlimited. Enforcement of this cap happens in the
+  /// mobile app when an owner creates staff — this just stores the value;
+  /// see the shop detail screen for the count of staff currently in use
+  /// against it.
+  Future<void> setStaffLimit(String slug, int? limit) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'staff_limit': limit,
+    });
+  }
+
+  /// [limit] null means unlimited. Enforcement of this cap happens in the
+  /// mobile app when an owner creates a product — this just stores the
+  /// value; see the shop detail screen for the count of products currently
+  /// in use against it.
+  Future<void> setProductLimit(String slug, int? limit) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'product_limit': limit,
+    });
+  }
+
+  /// Writes all five shop-link fields at once. A cleared input must arrive
+  /// here as null, not as an empty string: the mobile app treats any
+  /// non-empty value as a link and would keep printing a QR code for it on
+  /// every receipt. Nulls are written explicitly rather than omitted so the
+  /// stale value on the document is actually overwritten. Values are stored
+  /// raw (the handle or address as typed) — the URL each one resolves to is
+  /// derived at print time by the mobile app, never stored.
+  Future<void> setShopLinks(
+    String slug, {
+    required String? website,
+    required String? facebook,
+    required String? instagram,
+    required String? tiktok,
+    required bool linksEnabled,
+  }) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'website': website,
+      'facebook': facebook,
+      'instagram': instagram,
+      'tiktok': tiktok,
+      'shop_links_enabled': linksEnabled,
+    });
+  }
+
+  /// Starts a fresh 7-day free trial. The start time is the server's clock,
+  /// never the admin's, and any earlier "extend trial" end date is removed
+  /// so a re-enable always counts a full [kDefaultTrialDays] from now.
+  /// The mobile app locks itself once the trial end passes.
+  Future<void> startTrial(String slug) async {
+    final common = await _commonTrialFields();
+    await _firestore.collection('shops').doc(slug).update({
+      ...common,
+      'trial_enabled': true,
+      'trial_started_at': FieldValue.serverTimestamp(),
+      'trial_days': kDefaultTrialDays,
+      'trial_ends_at': FieldValue.delete(),
+    });
+  }
+
+  /// Starts a trial that ends after an exact [length] (e.g. a few minutes,
+  /// for testing the lock). Uses trial_ends_at, which the app reads ahead
+  /// of trial_started_at + trial_days.
+  Future<DateTime> startTrialFor(String slug, Duration length) async {
+    final end = DateTime.now().add(length);
+    final common = await _commonTrialFields();
+    await _firestore.collection('shops').doc(slug).update({
+      ...common,
+      'trial_enabled': true,
+      'trial_started_at': FieldValue.serverTimestamp(),
+      'trial_days': kDefaultTrialDays,
+      'trial_ends_at': Timestamp.fromDate(end),
+    });
+    return end;
+  }
+
+  /// The common lock message/contact as per-shop fields, copied onto the
+  /// shop when its trial starts so every app version shows them. If they
+  /// can't be read, the shop's fields are left untouched.
+  Future<Map<String, Object>> _commonTrialFields() async {
+    try {
+      return await TrialDefaultsService(
+        firestore: _firestore,
+      ).currentShopFields();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Turns the trial off (the shop has paid), unlocking the mobile app
+  /// live. The date fields are left in place as history.
+  Future<void> endTrial(String slug) async {
+    await _firestore.collection('shops').doc(slug).update({
+      'trial_enabled': false,
+    });
+  }
+
+  /// Pushes the trial end out by [days]: from the current computed end, or
+  /// from now if the trial has already ended. Read and written in one
+  /// transaction so the base is the document's latest state, not whatever
+  /// the admin's page last loaded. Returns the new end.
+  Future<DateTime> extendTrial(String slug, int days) async {
+    final ref = _firestore.collection('shops').doc(slug);
+    return _firestore.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      final trial = ShopTrial.fromMap(snapshot.data() ?? const {});
+      final now = DateTime.now();
+      final currentEnd = trial.endsAt;
+      final base = currentEnd != null && currentEnd.isAfter(now)
+          ? currentEnd
+          : now;
+      final newEnd = base.add(Duration(days: days));
+      tx.update(ref, {'trial_ends_at': Timestamp.fromDate(newEnd)});
+      return newEnd;
+    });
+  }
+
+  /// A shop's transaction documents for the day range [from, to]
+  /// (inclusive of both ends; null on a side means unbounded), in a single
+  /// read of each collection. Callers derive the stat tiles, the trend
+  /// chart, and the itemized transaction list from this one result (see
+  /// shop_activity_aggregate.dart) instead of re-reading per date range.
+  ///
+  /// The server-side bound is deliberately coarse — see
+  /// [activityQueryBounds] — and exists only to keep a shop's whole sales
+  /// history from crossing the network to answer a question about one
+  /// week. The exact range filter still runs client-side on what comes
+  /// back, so the figures don't depend on how the mobile app happens to
+  /// serialize its dates. A document whose created_at isn't an ISO8601
+  /// string is outside every bounded window, exactly as the client-side
+  /// filter already treats it.
+  ///
+  /// [includeProducts] backs the product-count tile only; views that show
+  /// transactions alone skip that read. The catalog is never date-scoped —
+  /// a product is current regardless of when it was added.
+  Future<ShopActivity> getShopActivity(
+    String slug, {
+    DateTime? from,
+    DateTime? to,
+    bool includeProducts = true,
+  }) async {
+    final shopRef = _firestore.collection('shops').doc(slug);
+    final bounds = activityQueryBounds(from: from, to: to);
+
+    Query<Map<String, dynamic>> scoped(String collection) {
+      Query<Map<String, dynamic>> query = shopRef.collection(collection);
+      final startAt = bounds.startAt;
+      final endBefore = bounds.endBefore;
+      if (startAt != null) {
+        query = query.where('created_at', isGreaterThanOrEqualTo: startAt);
+      }
+      if (endBefore != null) {
+        query = query.where('created_at', isLessThan: endBefore);
+      }
+      return query;
+    }
+
+    final results = await Future.wait([
+      scoped('sales').get(),
+      scoped('expenses').get(),
+      scoped('additional_income').get(),
+      if (includeProducts) shopRef.collection('products').get(),
+    ]);
+
+    List<ActivityDoc> docs(int index) {
+      if (index >= results.length) return const [];
+      return results[index].docs
+          .map((d) => ActivityDoc(id: d.id, data: d.data()))
+          .toList();
+    }
+
+    return ShopActivity(
+      sales: docs(0),
+      expenses: docs(1),
+      additionalIncome: docs(2),
+      products: docs(3),
+      from: from,
+      to: to,
+    );
+  }
+
+  Future<ShopCreationResult> createShop({
+    required String slug,
+    required String shopName,
+    required String ownerDisplayName,
+    required String ownerUsername,
+    required String ownerPassword,
+  }) async {
+    final existing = await _firestore.collection('shops').doc(slug).get();
+    if (existing.exists) {
+      throw const ShopCodeTakenException();
+    }
+
+    final email = '$ownerUsername@$slug.zonix.local';
+
+    final secondaryApp = await Firebase.initializeApp(
+      name: 'ownerCreation_${DateTime.now().microsecondsSinceEpoch}',
+      options: Firebase.app().options,
+    );
+    late final String ownerUid;
+    try {
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      final credential = await secondaryAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: ownerPassword,
+      );
+      ownerUid = credential.user!.uid;
+      await secondaryAuth.signOut();
+    } finally {
+      await secondaryApp.delete();
+    }
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    final shop = Shop(
+      id: slug,
+      name: shopName,
+      slug: slug,
+      isActive: true,
+      ownerUid: ownerUid,
+      createdAt: nowIso,
+      staffLimit: 1,
+      productLimit: 10,
+      // New shops start with no links, and with the owner locked out of
+      // editing them from the mobile app until an admin opts them in.
+      shopLinksEnabled: false,
+    );
+
+    final ownerUser = ShopUser(
+      id: ownerUid,
+      username: ownerUsername,
+      displayName: ownerDisplayName,
+      email: email,
+      role: 'owner',
+      // The owner can sign in straight away; a platform admin can still
+      // turn sign-in off later via the Enabled toggle.
+      isEnabled: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      isDeleted: false,
+    );
+
+    final batch = _firestore.batch();
+    batch.set(_firestore.collection('shops').doc(slug), shop.toMap());
+    batch.set(
+      _firestore
+          .collection('shops')
+          .doc(slug)
+          .collection('users')
+          .doc(ownerUid),
+      ownerUser.toMap(),
+    );
+    batch.set(_shopIndex.doc(slug), {'name': shopName, 'createdAt': nowIso});
+    await batch.commit();
+
+    return ShopCreationResult(
+      slug: slug,
+      ownerUsername: ownerUsername,
+      ownerPassword: ownerPassword,
+    );
+  }
+
+  /// Adds a new owner or staff member to an existing shop: creates their
+  /// Auth account on a throwaway secondary app (so it doesn't disturb the
+  /// admin's own session) and writes their shops/{slug}/users/{uid} doc.
+  /// If role is 'owner', also updates shops/{slug}.owner_uid to point at
+  /// them — informational only, since isOwner() checks the role field on
+  /// the caller's own membership doc, not this pointer.
+  Future<ReissueLoginResult> addShopUser({
+    required String slug,
+    required String role,
+    required String displayName,
+    required String username,
+    required String password,
+  }) async {
+    final email = '$username@$slug.zonix.local';
+
+    final secondaryApp = await Firebase.initializeApp(
+      name: 'addUser_${DateTime.now().microsecondsSinceEpoch}',
+      options: Firebase.app().options,
+    );
+    late final String uid;
+    try {
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      final credential = await secondaryAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      uid = credential.user!.uid;
+      await secondaryAuth.signOut();
+    } finally {
+      await secondaryApp.delete();
+    }
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final newUser = ShopUser(
+      id: uid,
+      username: username,
+      displayName: displayName,
+      email: email,
+      role: role,
+      isEnabled: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      isDeleted: false,
+    );
+
+    final shopRef = _firestore.collection('shops').doc(slug);
+    final batch = _firestore.batch();
+    batch.set(shopRef.collection('users').doc(uid), newUser.toMap());
+    if (role == 'owner') {
+      batch.update(shopRef, {'owner_uid': uid});
+    }
+    await batch.commit();
+
+    return ReissueLoginResult(username: username, password: password);
+  }
+
+  /// Updates an existing owner/staff member's profile fields. Username,
+  /// email, and password aren't editable here — changing login credentials
+  /// goes through [reissueLogin] instead, since Firebase Auth doesn't allow
+  /// changing another user's password or email from the client SDK.
+  Future<void> updateShopUser({
+    required String slug,
+    required String uid,
+    required String displayName,
+    required String role,
+    required bool isEnabled,
+  }) async {
+    final shopRef = _firestore.collection('shops').doc(slug);
+    final batch = _firestore.batch();
+    batch.update(shopRef.collection('users').doc(uid), {
+      'display_name': displayName,
+      'role': role,
+      'is_enabled': isEnabled,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+    if (role == 'owner') {
+      batch.update(shopRef, {'owner_uid': uid});
+    }
+    await batch.commit();
+  }
+
+  /// Removes a shop member's Firestore record, immediately cutting off
+  /// their shop access (isMember/isOwner check this doc). Their Firebase
+  /// Auth account itself can't be deleted from the client SDK for anyone
+  /// but the signed-in user, so it's left behind, harmless and orphaned.
+  Future<void> deleteShopUser({
+    required String slug,
+    required String uid,
+  }) async {
+    await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('users')
+        .doc(uid)
+        .delete();
+  }
+
+  /// Firebase Auth passwords can never be recovered or changed by anyone
+  /// other than the signed-in user themself — there's no client-side "change
+  /// this other user's password" API, and adding one requires the Admin SDK
+  /// (a Cloud Function). Instead this retires the old login and issues a
+  /// fresh one: a new Auth account + a new shops/{slug}/users/{uid} doc with
+  /// the same role/displayName, and deletes the old membership doc so the
+  /// old login immediately stops passing isMember/isOwner. The orphaned old
+  /// Auth account is harmless — it exists but grants access to nothing.
+  Future<ReissueLoginResult> reissueLogin({
+    required String slug,
+    required ShopUser oldUser,
+    required String newUsername,
+    required String newPassword,
+  }) async {
+    final email = '$newUsername@$slug.zonix.local';
+
+    final secondaryApp = await Firebase.initializeApp(
+      name: 'reissueLogin_${DateTime.now().microsecondsSinceEpoch}',
+      options: Firebase.app().options,
+    );
+    late final String newUid;
+    try {
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      final credential = await secondaryAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: newPassword,
+      );
+      newUid = credential.user!.uid;
+      await secondaryAuth.signOut();
+    } finally {
+      await secondaryApp.delete();
+    }
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final newUser = ShopUser(
+      id: newUid,
+      username: newUsername,
+      displayName: oldUser.displayName,
+      email: email,
+      role: oldUser.role,
+      isEnabled: true,
+      createdAt: oldUser.createdAt,
+      updatedAt: nowIso,
+      isDeleted: false,
+    );
+
+    final shopRef = _firestore.collection('shops').doc(slug);
+    final batch = _firestore.batch();
+    batch.set(shopRef.collection('users').doc(newUid), newUser.toMap());
+    batch.delete(shopRef.collection('users').doc(oldUser.id));
+    if (oldUser.role == 'owner') {
+      batch.update(shopRef, {'owner_uid': newUid});
+    }
+    await batch.commit();
+
+    return ReissueLoginResult(username: newUsername, password: newPassword);
+  }
+
+  /// Shop subcollections removed on delete. `users` is handled separately
+  /// because each user doc has its own `sessions` subcollection.
+  static const _shopSubcollections = [
+    'history_requests',
+    'products',
+    'sales',
+    'expenses',
+    'additional_income',
+  ];
+
+  /// Deletes every Firebase Auth login of the shop (owner and staff) through
+  /// the `deleteShopAuthUsers` Cloud Function, since the client SDK can't
+  /// delete other people's accounts. Returns how many could not be deleted.
+  /// Safe to call again: it also finds logins by their
+  /// `<username>@<slug>.zonix.local` email.
+  Future<int> deleteShopAuthUsers(String slug) async {
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('deleteShopAuthUsers')
+        .call<Map<String, dynamic>>({'slug': slug});
+    return (result.data['failed'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Public URLs of every product image the shop has uploaded. Read before
+  /// [deleteShop] so the images can be removed from storage afterwards.
+  Future<List<String>> productImageUrls(String slug) async {
+    final snapshot = await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .get();
+    return [
+      for (final doc in snapshot.docs)
+        if (Product.fromMap(doc.id, doc.data()).imageUrl case final url?
+            when url.trim().isNotEmpty)
+          url.trim(),
+    ];
+  }
+
+  /// Deletes a shop and every Firestore record tied to it:
+  /// - each user's `sessions`, then the `users` docs themselves (removing
+  ///   these first revokes staff access, since isMember/isOwner read them);
+  /// - `history_requests`, `products`, `sales`, `expenses`,
+  ///   `additional_income`;
+  /// - the top-level `device_logins` records for this shop;
+  /// - the shop doc and the portal's index entry (which also holds billing).
+  ///
+  /// Firestore never cascades deletes to subcollections, so each one is
+  /// emptied explicitly. Product images live in Supabase and are removed by
+  /// the caller (see [productImageUrls]).
+  Future<void> deleteShop(String slug) async {
+    final shopRef = _firestore.collection('shops').doc(slug);
+
+    final users = await shopRef.collection('users').get();
+    for (final user in users.docs) {
+      await _deleteCollectionInBatches(user.reference.collection('sessions'));
+    }
+    await _deleteCollectionInBatches(shopRef.collection('users'));
+
+    for (final sub in _shopSubcollections) {
+      await _deleteCollectionInBatches(shopRef.collection(sub));
+    }
+
+    await _deleteQueryInBatches(
+      _firestore.collection('device_logins').where('shop_id', isEqualTo: slug),
+    );
+
+    final batch = _firestore.batch();
+    batch.delete(shopRef);
+    batch.delete(_shopIndex.doc(slug));
+    await batch.commit();
+  }
+
+  Future<void> _deleteQueryInBatches(Query<Map<String, dynamic>> query) async {
+    const pageSize = 300;
+    while (true) {
+      final snapshot = await query.limit(pageSize).get();
+      if (snapshot.docs.isEmpty) return;
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      if (snapshot.docs.length < pageSize) return;
+    }
+  }
+
+  Future<void> _deleteCollectionInBatches(
+    CollectionReference<Map<String, dynamic>> collection,
+  ) async {
+    const pageSize = 300;
+    while (true) {
+      final snapshot = await collection.limit(pageSize).get();
+      if (snapshot.docs.isEmpty) return;
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      if (snapshot.docs.length < pageSize) return;
+    }
+  }
+}

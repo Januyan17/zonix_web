@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zonixweb/models/platform_stats.dart';
-import 'package:zonixweb/utils/platform_aggregate.dart';
+import 'package:zonixweb/features/overview/models/platform_stats.dart';
+import 'package:zonixweb/features/overview/utils/platform_aggregate.dart';
 
 ShopHealth _shop({
   String slug = 's',
@@ -44,21 +44,21 @@ void main() {
     });
 
     test('buckets signups into their month', () {
-      final series = buildGrowthSeries([
-        DateTime(2026, 8, 2),
-        DateTime(2026, 8, 19),
-        DateTime(2026, 7, 5),
-      ], months: 3, now: now);
+      final series = buildGrowthSeries(
+        [DateTime(2026, 8, 2), DateTime(2026, 8, 19), DateTime(2026, 7, 5)],
+        months: 3,
+        now: now,
+      );
 
       expect(series.map((p) => p.newShops).toList(), [0, 1, 2]);
     });
 
     test('cumulative carries shops created before the window', () {
-      final series = buildGrowthSeries([
-        DateTime(2024, 1, 1),
-        DateTime(2024, 5, 1),
-        DateTime(2026, 8, 3),
-      ], months: 3, now: now);
+      final series = buildGrowthSeries(
+        [DateTime(2024, 1, 1), DateTime(2024, 5, 1), DateTime(2026, 8, 3)],
+        months: 3,
+        now: now,
+      );
 
       // Two shops predate the window, so the running total starts at 2.
       expect(series.map((p) => p.cumulative).toList(), [2, 2, 3]);
@@ -66,9 +66,11 @@ void main() {
     });
 
     test('crosses a year boundary without losing months', () {
-      final series = buildGrowthSeries([
-        DateTime(2025, 12, 10),
-      ], months: 3, now: DateTime(2026, 1, 15));
+      final series = buildGrowthSeries(
+        [DateTime(2025, 12, 10)],
+        months: 3,
+        now: DateTime(2026, 1, 15),
+      );
 
       expect(series.map((p) => p.month).toList(), [
         DateTime(2025, 11),
