@@ -76,6 +76,15 @@ class _ContactRequestsScreenState extends State<ContactRequestsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _manualRefresh() async {
+    await _feed.refresh();
+    if (!mounted) return;
+    showSnackBarMessage(
+      context,
+      _feed.error == null ? 'Requests refreshed' : 'Refresh failed',
+    );
+  }
+
   /// Swaps one request in the shared list (optimistic update / rollback).
   void _replaceLocal(ContactRequest updated) {
     final list = _feed.value;
@@ -207,6 +216,17 @@ class _ContactRequestsScreenState extends State<ContactRequestsScreen> {
                         ),
                 ),
               ),
+            ),
+            OutlinedButton.icon(
+              onPressed: _feed.refreshing ? null : _manualRefresh,
+              icon: _feed.refreshing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: const Text('Refresh'),
             ),
           ],
         ),

@@ -10,9 +10,18 @@ import 'package:zonixweb/core/utils/error_utils.dart';
 /// when the last one leaves, so the nav badge, overview card and pages
 /// share one subscription. A dropped stream is retried after a pause.
 class LiveFeed<T> extends ChangeNotifier {
-  LiveFeed(this._open);
+  LiveFeed(this._open, {Future<T> Function()? fetch})
+    : _fetch = fetch; // ignore: prefer_initializing_formals
 
   final Stream<T> Function() _open;
+
+  /// Optional one-off load, used by [refresh].
+  final Future<T> Function()? _fetch;
+
+  bool _refreshing = false;
+
+  /// True while a manual [refresh] is running.
+  bool get refreshing => _refreshing;
 
   static const _retryDelay = Duration(seconds: 15);
 
@@ -52,6 +61,27 @@ class LiveFeed<T> extends ChangeNotifier {
   void restart() {
     _stop();
     if (hasListeners) _start();
+  }
+
+  /// Manual refresh: loads the value once (when a fetch is given) and
+  /// reconnects the live stream.
+  Future<void> refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    notifyListeners();
+    restart();
+    try {
+      final fetch = _fetch;
+      if (fetch != null) {
+        _value = await fetch();
+        _error = null;
+      }
+    } catch (e) {
+      _error = describeError(e);
+    } finally {
+      _refreshing = false;
+      notifyListeners();
+    }
   }
 
   void _start() {

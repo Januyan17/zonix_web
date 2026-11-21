@@ -72,12 +72,22 @@ class ContactRequest {
     return t.isEmpty ? null : t;
   }
 
+  static DateTime? _date(Object? v) =>
+      v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
+
+  /// Null for a row with no id (e.g. a partial realtime payload), so one
+  /// bad row never breaks the whole list.
+  static ContactRequest? tryFromMap(Map<String, dynamic> map) {
+    final id = map['id']?.toString();
+    if (id == null || id.isEmpty) return null;
+    return ContactRequest.fromMap(map);
+  }
+
   factory ContactRequest.fromMap(Map<String, dynamic> map) {
     return ContactRequest(
-      id: map['id'] as String,
+      id: map['id']?.toString() ?? '',
       createdAt:
-          DateTime.tryParse(map['created_at'] as String? ?? '')?.toLocal() ??
-          DateTime.fromMillisecondsSinceEpoch(0),
+          _date(map['created_at']) ?? DateTime.fromMillisecondsSinceEpoch(0),
       ownerName: _text(map['owner_name']) ?? '',
       shopName: _text(map['shop_name']) ?? '',
       phone: _text(map['phone']) ?? '',
@@ -85,11 +95,9 @@ class ContactRequest {
       message: _text(map['message']),
       platform: _text(map['platform']),
       appVersion: _text(map['app_version']),
-      status: ContactRequestStatus.fromValue(map['status'] as String?),
+      status: ContactRequestStatus.fromValue(_text(map['status'])),
       adminNote: _text(map['admin_note']),
-      handledAt: DateTime.tryParse(
-        map['handled_at'] as String? ?? '',
-      )?.toLocal(),
+      handledAt: _date(map['handled_at']),
       handledBy: _text(map['handled_by']),
     );
   }

@@ -23,7 +23,20 @@ class ContactRequestService {
       .from(_table)
       .stream(primaryKey: ['id'])
       .order('created_at', ascending: false)
-      .map((rows) => rows.map(ContactRequest.fromMap).toList());
+      .map(_parse);
+
+  /// One-off fetch of every request, newest first (manual refresh).
+  Future<List<ContactRequest>> fetchAll() async {
+    final rows = await _client
+        .from(_table)
+        .select()
+        .order('created_at', ascending: false);
+    return _parse(rows);
+  }
+
+  static List<ContactRequest> _parse(List<Map<String, dynamic>> rows) => [
+    for (final row in rows) ?ContactRequest.tryFromMap(row),
+  ];
 
   /// Sets the status; handled_at is now when it leaves 'new' and cleared
   /// when set back to 'new'. [note] also replaces admin_note when given.
@@ -75,6 +88,7 @@ class ContactRequestService {
 /// overview card all read it.
 final contactRequestsFeed = LiveFeed<List<ContactRequest>>(
   () => ContactRequestService().watchAll(),
+  fetch: () => ContactRequestService().fetchAll(),
 );
 
 /// Requests still in 'new', for badges. Zero until loaded.
