@@ -36,8 +36,12 @@ class _AuthGateState extends State<AuthGate> {
   Future<void> _init() async {
     final claimed = await widget.authService.checkBootstrapClaimed();
     final user = widget.authService.currentUser;
-    if (user != null && !await widget.authService.isUidAdmin(user.uid)) {
-      await widget.authService.signOut();
+    if (user != null) {
+      if (await widget.authService.isUidAdmin(user.uid)) {
+        AuthService.markActiveAdmin(user.uid);
+      } else {
+        await widget.authService.signOut();
+      }
     }
     if (mounted) {
       setState(() {

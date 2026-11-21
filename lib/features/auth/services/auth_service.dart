@@ -21,6 +21,16 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
+  /// The uid of the admin whose dashboard session is open, or null on the
+  /// login / signup screens. Set only after the admin check passes, and
+  /// cleared by [signOut], so [SessionWatcher] reacts only to sign-outs it
+  /// did not cause (password changed, account disabled or deleted), never
+  /// to the rollbacks in [signUp] / [logIn] or the Log out button.
+  static String? activeAdminUid;
+
+  /// Marks [uid] as the open admin session (see [activeAdminUid]).
+  static void markActiveAdmin(String uid) => activeAdminUid = uid;
+
   DocumentReference<Map<String, dynamic>> get _bootstrapRef =>
       _firestore.collection('platform_config').doc('adminBootstrap');
 
@@ -76,6 +86,7 @@ class AuthService {
       debugPrint('[SIGNUP] platform_admins doc written');
       await _bootstrapRef.update({'claimed': true});
       debugPrint('[SIGNUP] bootstrap claimed=true written');
+      markActiveAdmin(user.uid);
     } catch (e, st) {
       debugPrint('[SIGNUP] signup write FAILED: $e');
       debugPrint('[SIGNUP] stack: $st');
@@ -107,9 +118,13 @@ class AuthService {
     }
     // Pick up a Supabase role claim set since the last token was issued.
     await SupabaseAccessToken.refreshAfterSignIn(user);
+    markActiveAdmin(user.uid);
   }
 
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() {
+    activeAdminUid = null;
+    return _auth.signOut();
+  }
 
   Future<bool> isUidAdmin(String uid) async {
     final doc = await _firestore.collection('platform_admins').doc(uid).get();
