@@ -25,4 +25,60 @@ class SupabaseStorageService {
     await _client.storage.from(_bucket).uploadBinary(path, bytes);
     return _client.storage.from(_bucket).getPublicUrl(path);
   }
+
+  /// Removes a deleted shop's product images: the ones referenced by its
+  /// products ([imageUrls]) plus anything else left in its `slug/` folder.
+  /// Returns how many files could not be removed (0 when all are gone).
+  Future<int> deleteShopImages({
+    required String slug,
+    required List<String> imageUrls,
+  }) async {
+    final bucket = _client.storage.from(_bucket);
+    final paths = <String>{
+      for (final url in imageUrls) ?_pathFromPublicUrl(url),
+    };
+
+    // Also sweep the folder, for images whose product was already deleted.
+    // Listing may be blocked by storage policies; the URLs above still work.
+    try {
+      const pageSize = 1000;
+      for (var offset = 0; ; offset += pageSize) {
+        final files = await bucket.list(
+          path: slug,
+          searchOptions: SearchOptions(limit: pageSize, offset: offset),
+        );
+        // Folder placeholders have no id; only real files are removed.
+        paths.addAll([
+          for (final f in files)
+            if (f.id != null) '$slug/${f.name}',
+        ]);
+        if (files.length < pageSize) break;
+      }
+    } catch (_) {}
+
+    var failed = 0;
+    final all = paths.toList();
+    for (var i = 0; i < all.length; i += 100) {
+      final chunk = all.sublist(i, i + 100 > all.length ? all.length : i + 100);
+      try {
+        final removed = await bucket.remove(chunk);
+        failed += chunk.length - removed.length;
+      } catch (_) {
+        failed += chunk.length;
+      }
+    }
+    return failed;
+  }
+
+  /// `.../storage/v1/object/public/product-images/<path>` → `<path>`, or
+  /// null for a URL that isn't in this bucket.
+  static String? _pathFromPublicUrl(String url) {
+    const marker = '/storage/v1/object/public/$_bucket/';
+    final index = url.indexOf(marker);
+    if (index < 0) return null;
+    final path = Uri.decodeComponent(
+      url.substring(index + marker.length).split('?').first,
+    );
+    return path.isEmpty ? null : path;
+  }
 }

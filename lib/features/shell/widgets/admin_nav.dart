@@ -232,6 +232,13 @@ class AdminNavContent extends StatelessWidget {
         onTap: () => onNavigate(AdminPage.trialSettings),
       ),
       AdminNavItem(
+        icon: Icons.support_agent_rounded,
+        label: 'Join contact',
+        selected: current == AdminPage.joinContact,
+        extended: extended,
+        onTap: () => onNavigate(AdminPage.joinContact),
+      ),
+      AdminNavItem(
         icon: Icons.phonelink_lock_rounded,
         label: 'Device logins',
         selected: current == AdminPage.deviceLogins,

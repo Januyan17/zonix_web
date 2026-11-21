@@ -41,8 +41,10 @@ class _DeleteShopDialogState extends State<DeleteShopDialog> {
         children: [
           Text(
             'This permanently deletes "${widget.shopName}" (${widget.slug}), '
-            'its owner and staff records, and all products, sales, expenses, '
-            'and income data. Staff will immediately lose access. This cannot be undone.',
+            'its owner and staff login accounts and records, login sessions, device logins, '
+            'history requests, product images, and all products, sales, '
+            'expenses, income and billing data. Staff will immediately lose '
+            'access. This cannot be undone.',
           ),
           const SizedBox(height: 16),
           Text(

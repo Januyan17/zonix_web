@@ -7,8 +7,7 @@ import 'package:zonixweb/features/shops/services/trial_defaults_service.dart';
 import 'package:zonixweb/features/shops/widgets/settings/trial_section.dart';
 
 /// Shows and edits the lock message and payment contact shared by every
-/// shop's free trial. Set once here instead of on each shop; a shop's own
-/// values (in the trial section) still take priority when filled in.
+/// shop's free trial. Set once here; there are no per-shop values.
 class TrialDefaultsCard extends StatefulWidget {
   const TrialDefaultsCard({super.key, this.service});
 
@@ -25,7 +24,7 @@ class _TrialDefaultsCardState extends State<TrialDefaultsCard> {
   late final Stream<TrialDefaults> _stream = _service.watch();
 
   Future<void> _edit(TrialDefaults current) async {
-    final saved = await showDialog<bool>(
+    final failedShops = await showDialog<int>(
       context: context,
       builder: (_) => _EditTrialDefaultsDialog(
         initial: current,
@@ -33,9 +32,13 @@ class _TrialDefaultsCardState extends State<TrialDefaultsCard> {
             _service.save(message: message, contact: contact),
       ),
     );
-    if (saved == true && mounted) {
-      showSnackBarMessage(context, 'Common trial details saved for all shops');
-    }
+    if (failedShops == null || !mounted) return;
+    showSnackBarMessage(
+      context,
+      failedShops == 0
+          ? 'Common trial details saved for all shops'
+          : 'Saved, but $failedShops shop(s) could not be updated',
+    );
   }
 
   @override
@@ -80,8 +83,7 @@ class _TrialDefaultsCardState extends State<TrialDefaultsCard> {
                 ),
                 const SizedBox(height: AppDimens.spacing6),
                 Text(
-                  'Shown on the trial-ended popup of every shop that has no '
-                  'message or contact of its own.',
+                  'Shown on the trial-ended popup of every shop.',
                   style: TextStyle(
                     fontSize: AppDimens.fontLabel,
                     color: colorScheme.onSurfaceVariant,
@@ -173,7 +175,9 @@ class _EditTrialDefaultsDialog extends StatefulWidget {
   const _EditTrialDefaultsDialog({required this.initial, required this.onSave});
 
   final TrialDefaults initial;
-  final Future<void> Function(String? message, String? contact) onSave;
+
+  /// Returns how many shops could not be updated.
+  final Future<int> Function(String? message, String? contact) onSave;
 
   @override
   State<_EditTrialDefaultsDialog> createState() =>
@@ -201,8 +205,11 @@ class _EditTrialDefaultsDialogState extends State<_EditTrialDefaultsDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      await widget.onSave(_messageController.text, _contactController.text);
-      if (mounted) Navigator.of(context).pop(true);
+      final failedShops = await widget.onSave(
+        _messageController.text,
+        _contactController.text,
+      );
+      if (mounted) Navigator.of(context).pop(failedShops);
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -223,10 +230,7 @@ class _EditTrialDefaultsDialogState extends State<_EditTrialDefaultsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Used for every shop. A shop with its own message or contact '
-                'keeps using its own.',
-              ),
+              const Text('Used on the trial-ended popup of every shop.'),
               const SizedBox(height: AppDimens.spacing16),
               TextFormField(
                 controller: _contactController,

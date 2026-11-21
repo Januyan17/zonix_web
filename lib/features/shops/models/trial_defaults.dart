@@ -3,9 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// The lock-popup text and "Contact us to pay" target shared by every shop,
 /// stored in `platform_config/trialDefaults`.
 ///
-/// A shop's own `trial_message` / `trial_contact` still win when set; these
-/// fill in whatever the shop leaves blank. Both null means the mobile app
-/// falls back to its built-in copy, exactly as before.
+/// These are the only lock message and contact the portal edits; they take
+/// priority over any old per-shop `trial_message` / `trial_contact`. Both
+/// null means the mobile app falls back to its built-in copy.
 class TrialDefaults {
   const TrialDefaults({this.message, this.contact, this.updatedAt});
 

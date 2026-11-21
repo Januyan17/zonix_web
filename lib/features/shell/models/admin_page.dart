@@ -9,6 +9,7 @@ enum AdminPage {
   payments,
   appVersion,
   trialSettings,
+  joinContact,
   deviceLogins,
   historyRequests,
 }

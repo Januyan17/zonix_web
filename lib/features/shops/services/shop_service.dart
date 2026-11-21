@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -8,6 +9,7 @@ import 'package:zonixweb/features/shops/models/shop_activity.dart';
 import 'package:zonixweb/features/shops/models/shop_trial.dart';
 import 'package:zonixweb/features/shops/models/shop_user.dart';
 import 'package:zonixweb/features/shops/models/user_session.dart';
+import 'package:zonixweb/features/shops/services/trial_defaults_service.dart';
 import 'package:zonixweb/features/shops/utils/shop_activity_aggregate.dart';
 
 class ShopCodeTakenException implements Exception {
@@ -289,7 +291,9 @@ class ShopService {
   /// so a re-enable always counts a full [kDefaultTrialDays] from now.
   /// The mobile app locks itself once the trial end passes.
   Future<void> startTrial(String slug) async {
+    final common = await _commonTrialFields();
     await _firestore.collection('shops').doc(slug).update({
+      ...common,
       'trial_enabled': true,
       'trial_started_at': FieldValue.serverTimestamp(),
       'trial_days': kDefaultTrialDays,
@@ -302,7 +306,9 @@ class ShopService {
   /// of trial_started_at + trial_days.
   Future<DateTime> startTrialFor(String slug, Duration length) async {
     final end = DateTime.now().add(length);
+    final common = await _commonTrialFields();
     await _firestore.collection('shops').doc(slug).update({
+      ...common,
       'trial_enabled': true,
       'trial_started_at': FieldValue.serverTimestamp(),
       'trial_days': kDefaultTrialDays,
@@ -311,29 +317,24 @@ class ShopService {
     return end;
   }
 
+  /// The common lock message/contact as per-shop fields, copied onto the
+  /// shop when its trial starts so every app version shows them. If they
+  /// can't be read, the shop's fields are left untouched.
+  Future<Map<String, Object>> _commonTrialFields() async {
+    try {
+      return await TrialDefaultsService(
+        firestore: _firestore,
+      ).currentShopFields();
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// Turns the trial off (the shop has paid), unlocking the mobile app
   /// live. The date fields are left in place as history.
   Future<void> endTrial(String slug) async {
     await _firestore.collection('shops').doc(slug).update({
       'trial_enabled': false,
-    });
-  }
-
-  /// The lock popup's custom text and "Contact us to pay" target. A blank
-  /// value removes the field, so the app falls back to its default text.
-  Future<void> setTrialDetails(
-    String slug, {
-    required String? message,
-    required String? contact,
-  }) async {
-    Object valueOrDelete(String? v) {
-      final trimmed = v?.trim() ?? '';
-      return trimmed.isEmpty ? FieldValue.delete() : trimmed;
-    }
-
-    await _firestore.collection('shops').doc(slug).update({
-      'trial_message': valueOrDelete(message),
-      'trial_contact': valueOrDelete(contact),
     });
   }
 
@@ -657,29 +658,90 @@ class ShopService {
     return ReissueLoginResult(username: newUsername, password: newPassword);
   }
 
+  /// Shop subcollections removed on delete. `users` is handled separately
+  /// because each user doc has its own `sessions` subcollection.
   static const _shopSubcollections = [
-    'users',
+    'history_requests',
     'products',
     'sales',
     'expenses',
     'additional_income',
   ];
 
-  /// Deletes a shop entirely: every doc in each subcollection, the shop doc
-  /// itself, and the portal's index entry. Subcollection docs aren't
-  /// auto-deleted by Firestore when a parent doc is removed, and the
-  /// isMember/isOwner rules check those subcollection docs directly (not the
-  /// parent), so leaving them behind would leave the shop fully functional
-  /// for existing staff despite looking deleted in the portal.
+  /// Deletes every Firebase Auth login of the shop (owner and staff) through
+  /// the `deleteShopAuthUsers` Cloud Function, since the client SDK can't
+  /// delete other people's accounts. Returns how many could not be deleted.
+  /// Safe to call again: it also finds logins by their
+  /// `<username>@<slug>.zonix.local` email.
+  Future<int> deleteShopAuthUsers(String slug) async {
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('deleteShopAuthUsers')
+        .call<Map<String, dynamic>>({'slug': slug});
+    return (result.data['failed'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Public URLs of every product image the shop has uploaded. Read before
+  /// [deleteShop] so the images can be removed from storage afterwards.
+  Future<List<String>> productImageUrls(String slug) async {
+    final snapshot = await _firestore
+        .collection('shops')
+        .doc(slug)
+        .collection('products')
+        .get();
+    return [
+      for (final doc in snapshot.docs)
+        if (Product.fromMap(doc.id, doc.data()).imageUrl case final url?
+            when url.trim().isNotEmpty)
+          url.trim(),
+    ];
+  }
+
+  /// Deletes a shop and every Firestore record tied to it:
+  /// - each user's `sessions`, then the `users` docs themselves (removing
+  ///   these first revokes staff access, since isMember/isOwner read them);
+  /// - `history_requests`, `products`, `sales`, `expenses`,
+  ///   `additional_income`;
+  /// - the top-level `device_logins` records for this shop;
+  /// - the shop doc and the portal's index entry (which also holds billing).
+  ///
+  /// Firestore never cascades deletes to subcollections, so each one is
+  /// emptied explicitly. Product images live in Supabase and are removed by
+  /// the caller (see [productImageUrls]).
   Future<void> deleteShop(String slug) async {
     final shopRef = _firestore.collection('shops').doc(slug);
+
+    final users = await shopRef.collection('users').get();
+    for (final user in users.docs) {
+      await _deleteCollectionInBatches(user.reference.collection('sessions'));
+    }
+    await _deleteCollectionInBatches(shopRef.collection('users'));
+
     for (final sub in _shopSubcollections) {
       await _deleteCollectionInBatches(shopRef.collection(sub));
     }
+
+    await _deleteQueryInBatches(
+      _firestore.collection('device_logins').where('shop_id', isEqualTo: slug),
+    );
+
     final batch = _firestore.batch();
     batch.delete(shopRef);
     batch.delete(_shopIndex.doc(slug));
     await batch.commit();
+  }
+
+  Future<void> _deleteQueryInBatches(Query<Map<String, dynamic>> query) async {
+    const pageSize = 300;
+    while (true) {
+      final snapshot = await query.limit(pageSize).get();
+      if (snapshot.docs.isEmpty) return;
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      if (snapshot.docs.length < pageSize) return;
+    }
   }
 
   Future<void> _deleteCollectionInBatches(

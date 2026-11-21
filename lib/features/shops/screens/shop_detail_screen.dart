@@ -435,18 +435,6 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     );
   }
 
-  Future<void> _saveTrialDetails(TrialDetailsResult details) {
-    return _saveAndReload(
-      () => _service.setTrialDetails(
-        _slug,
-        message: details.message,
-        contact: details.contact,
-      ),
-      failure: 'Failed to save trial details',
-      success: (_) => 'Trial details saved',
-    );
-  }
-
   Future<void> _extendTrial(int days) {
     return _saveAndReload(
       () => _service.extendTrial(_slug, days),
@@ -573,9 +561,26 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     if (confirmed != true || !mounted) return;
 
     await _runBlocking(
-      () => _service.deleteShop(_slug),
+      () async {
+        // Read image URLs first: they live on the product docs being deleted.
+        final imageUrls = await _service.productImageUrls(_slug);
+        await _service.deleteShop(_slug);
+        return _storageService.deleteShopImages(
+          slug: _slug,
+          imageUrls: imageUrls,
+        );
+      },
       failure: 'Failed to delete shop',
-      onSuccess: (_) async => Navigator.of(context).pop(),
+      onSuccess: (imagesLeft) async {
+        if (imagesLeft > 0) {
+          showSnackBarMessage(
+            context,
+            'Shop deleted, but $imagesLeft product image(s) could not be '
+            'removed from storage',
+          );
+        }
+        Navigator.of(context).pop();
+      },
     );
   }
 
@@ -854,7 +859,6 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
         shop: shop,
         onToggle: _toggleTrial,
         onStartFor: _startTrialFor,
-        onSaveDetails: _saveTrialDetails,
         onExtend: _extendTrial,
       ),
     );
