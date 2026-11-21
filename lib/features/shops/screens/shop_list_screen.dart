@@ -110,9 +110,11 @@ class _ShopListScreenState extends State<ShopListScreen> {
                       child: Padding(
                         padding: EdgeInsets.only(
                           top: AppDimens.spacing8,
-                          bottom: AppDimens.spacing16,
+                          bottom: AppDimens.spacing20,
                         ),
                         child: PageHeader(
+                          icon: Icons.storefront_rounded,
+                          tag: 'Directory',
                           title: 'Shops',
                           subtitle:
                               'Every shop on the platform and its status.',

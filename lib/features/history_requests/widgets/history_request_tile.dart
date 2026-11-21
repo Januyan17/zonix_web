@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/utils/date_format.dart';
 import 'package:zonixweb/core/utils/error_utils.dart';
+import 'package:zonixweb/core/widgets/delete_confirm_dialog.dart';
 import 'package:zonixweb/core/widgets/status_pill.dart';
 import 'package:zonixweb/features/history_requests/models/history_request.dart';
 import 'package:zonixweb/features/history_requests/services/history_request_service.dart';
@@ -21,6 +22,7 @@ class HistoryRequestTile extends StatefulWidget {
     required this.request,
     required this.service,
     this.onUpdated,
+    this.onDeleted,
     this.showShop = true,
   });
 
@@ -30,6 +32,10 @@ class HistoryRequestTile extends StatefulWidget {
   /// Called with the re-read document after a successful approve/deny, so
   /// one-off lists can show the new state without a full reload.
   final ValueChanged<HistoryRequest>? onUpdated;
+
+  /// Called after the request was deleted, so lists can drop the row
+  /// without a reload. The delete button is shown only when this is set.
+  final ValueChanged<HistoryRequest>? onDeleted;
 
   /// Hidden on the shop detail page, where every row is the same shop.
   final bool showShop;
@@ -143,6 +149,43 @@ class _HistoryRequestTileState extends State<HistoryRequestTile> {
       messenger.showSnackBar(
         SnackBar(
           content: Text('Failed to update request: ${describeError(e)}'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final request = widget.request;
+    final ref = request.ref;
+    if (ref == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => DeleteConfirmDialog(
+        title: 'Delete this request?',
+        message:
+            'The history request from ${request.deviceLabel} at '
+            '${request.shopLabel} will be permanently deleted. Any approval '
+            'it has ends now. The phone can send a new request later.',
+        confirmLabel: 'Delete',
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.service.delete(ref);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Request deleted: ${request.deviceLabel}')),
+      );
+      widget.onDeleted?.call(request);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete request: ${describeError(e)}'),
         ),
       );
     } finally {
@@ -283,6 +326,14 @@ class _HistoryRequestTileState extends State<HistoryRequestTile> {
                 onChanged: request.ref == null ? null : _toggle,
               ),
             ),
+          if (widget.onDeleted != null && !_saving) ...[
+            const SizedBox(width: AppDimens.spacing4),
+            IconButton(
+              tooltip: 'Delete request',
+              onPressed: request.ref == null ? null : _delete,
+              icon: Icon(Icons.delete_outline, color: colorScheme.error),
+            ),
+          ],
         ],
       ),
     );

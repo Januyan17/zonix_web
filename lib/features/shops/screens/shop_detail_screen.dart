@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'package:zonixweb/core/services/supabase_storage_service.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
+import 'package:zonixweb/core/theme/zonix_colors.dart';
 import 'package:zonixweb/core/utils/date_format.dart';
 import 'package:zonixweb/core/utils/error_utils.dart';
 import 'package:zonixweb/core/utils/snackbar.dart';
 import 'package:zonixweb/core/widgets/delete_confirm_dialog.dart';
 import 'package:zonixweb/core/widgets/keep_alive_wrapper.dart';
-import 'package:zonixweb/core/widgets/section_header.dart';
 import 'package:zonixweb/core/widgets/tap_to_load_section.dart';
 import 'package:zonixweb/features/billing/widgets/shop_payments_tab.dart';
 import 'package:zonixweb/features/device_logins/widgets/recent_device_logins_section.dart';
@@ -21,6 +21,7 @@ import 'package:zonixweb/features/shops/models/shop_user.dart';
 import 'package:zonixweb/features/shops/services/shop_service.dart';
 import 'package:zonixweb/features/shops/utils/shop_activity_aggregate.dart';
 import 'package:zonixweb/features/shops/utils/shop_date_filter.dart';
+import 'package:zonixweb/features/shops/widgets/detail/shop_detail_chrome.dart';
 import 'package:zonixweb/features/shops/widgets/products/product_form_dialog.dart';
 import 'package:zonixweb/features/shops/widgets/products/products_section.dart';
 import 'package:zonixweb/features/shops/widgets/settings/delete_shop_dialog.dart';
@@ -58,7 +59,6 @@ class ShopDetailScreen extends StatefulWidget {
 
 class _ShopDetailScreenState extends State<ShopDetailScreen> {
   static const _sectionGap = SizedBox(height: AppDimens.spacing24);
-  static const _headerGap = SizedBox(height: AppDimens.spacing10);
 
   final _storageService = SupabaseStorageService();
 
@@ -91,6 +91,10 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   bool _togglingActive = false;
   bool _togglingStaffDelete = false;
   bool _showProducts = false;
+
+  /// Statistics are opt-in: the activity read behind them is only made the
+  /// first time the admin switches the section on.
+  bool _showStats = false;
   bool _showShopLinks = false;
   bool _showTransactions = false;
   String? _error;
@@ -101,7 +105,6 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   void initState() {
     super.initState();
     _load();
-    _loadActivity();
     _loadProductCount();
   }
 
@@ -748,33 +751,48 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final shop = _shop;
 
     return DefaultTabController(
       length: 2,
       initialIndex: widget.initialTab,
       child: Scaffold(
+        backgroundColor: const Color(0xFFF2F7FC),
         appBar: AppBar(
-          title: Text(_shop?.name ?? _slug),
-          bottom: const TabBar(
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          toolbarHeight: 76,
+          titleSpacing: 4,
+          iconTheme: const IconThemeData(color: Colors.white),
+          flexibleSpace: const ZonixHeaderBackground(),
+          title: ShopHeaderTitle(
+            title: shop?.name ?? _slug,
+            slug: _slug,
+            isActive: shop?.isActive,
+          ),
+          bottom: const ShopHeaderTabBar(
             tabs: [
-              Tab(icon: Icon(Icons.storefront_outlined), text: 'Details'),
-              Tab(icon: Icon(Icons.payments_outlined), text: 'Payments'),
+              (icon: Icons.storefront_outlined, label: 'Details'),
+              (icon: Icons.payments_outlined, label: 'Payments'),
             ],
           ),
           actions: [
-            if (_shop != null)
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: colorScheme.error),
+            if (shop != null)
+              HeaderGlassButton(
+                icon: Icons.delete_outline,
                 tooltip: 'Delete shop',
+                accent: const Color(0xFFFF8A8A),
                 onPressed: _confirmAndDelete,
               ),
-            const SizedBox(width: AppDimens.spacing8),
+            const SizedBox(width: AppDimens.spacing16),
           ],
         ),
         body: TabBarView(
           children: [
-            KeepAliveWrapper(child: _buildDetailsTab()),
+            KeepAliveWrapper(child: ZonixBackdrop(child: _buildDetailsTab())),
             ShopPaymentsTab(slug: _slug, shopName: _shop?.name ?? _slug),
           ],
         ),
@@ -784,210 +802,337 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
 
   Widget _buildDetailsTab() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!));
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: AppDimens.paddingAll24,
+          child: HoloPanel(
+            icon: Icons.error_outline_rounded,
+            tag: 'Signal lost',
+            title: 'Could not load shop',
+            subtitle: _error!,
+            accent: Theme.of(context).colorScheme.error,
+          ),
+        ),
+      );
+    }
     final shop = _shop;
     if (shop == null) return const Center(child: Text('Shop not found.'));
+
+    final staffCount = _users
+        .where((u) => u.role == 'staff' && !u.isDeleted)
+        .length;
+    final productCount = _stats?.productCount ?? _productCount ?? 0;
+
+    final summary = HoloPanel(
+      icon: Icons.tune_rounded,
+      tag: 'Control core',
+      title: 'Profile & limits',
+      subtitle: 'Identity, capacity and shop-wide switches',
+      flatten: true,
+      child: ShopSummaryCard(
+        shop: shop,
+        staffCount: staffCount,
+        productCount: productCount,
+        onEditStaffLimit: _editStaffLimit,
+        onEditProductLimit: _editProductLimit,
+        onEditMaxActiveDevices: _editMaxActiveDevices,
+        onToggleActive: _togglingActive ? null : _toggleActive,
+        onToggleStaffDelete: _togglingStaffDelete ? null : _toggleStaffDelete,
+      ),
+    );
+
+    final users = _buildUsersPanel();
+
+    final trial = HoloPanel(
+      icon: Icons.hourglass_top_rounded,
+      tag: 'Lifecycle',
+      title: 'Free trial',
+      accent: ZonixColors.emerald,
+      flatten: true,
+      child: TrialSection(
+        shop: shop,
+        onToggle: _toggleTrial,
+        onStartFor: _startTrialFor,
+        onSaveDetails: _saveTrialDetails,
+        onExtend: _extendTrial,
+      ),
+    );
+
+    final links = HoloPanel(
+      icon: Icons.qr_code_2_outlined,
+      tag: 'Receipt QR',
+      title: 'Shop Links',
+      subtitle: 'Website and social codes on receipts',
+      flatten: true,
+      trailing: NeonSwitch(
+        value: _showShopLinks,
+        onChanged: (v) => setState(() => _showShopLinks = v),
+      ),
+      child: _showShopLinks
+          ? ShopLinksSection(shop: shop, onSave: _saveShopLinks)
+          : null,
+    );
+
+    final statistics = HoloPanel(
+      icon: Icons.insights_outlined,
+      tag: 'Analytics',
+      title: 'Statistics',
+      subtitle: _showStats
+          ? null
+          : 'Switch on to load sales, trends and product insights',
+      accent: ZonixColors.chartBlue,
+      trailing: NeonSwitch(
+        value: _showStats,
+        onChanged: (v) {
+          setState(() => _showStats = v);
+          // First switch-on fetches; after that the data already in hand is
+          // shown again (pull-to-refresh or a wider filter re-reads it).
+          if (v && _activity == null) _loadActivity();
+        },
+      ),
+      child: !_showStats
+          ? null
+          : ShopStatisticsSection(
+              showHeader: false,
+              selection: _selection,
+              onSelectFilter: _selectFilter,
+              statsLoading: _statsLoading,
+              seriesLoading: _seriesLoading,
+              stats: _stats,
+              comparison: _comparison,
+              voids: _voids,
+              dailySeries: _dailySeries,
+              hours: _hours,
+              weekdays: _weekdays,
+              performance: _performance,
+              deadStock: _deadStock,
+            ),
+    );
+
+    final transactions = HoloPanel(
+      icon: Icons.receipt_long_outlined,
+      tag: 'Ledger',
+      title: 'Transactions',
+      subtitle: 'View sales, expenses, and additional income for this shop.',
+      accent: ZonixColors.emerald,
+      trailing: NeonSwitch(
+        value: _showTransactions,
+        onChanged: (v) {
+          setState(() => _showTransactions = v);
+          if (v) _openTransactionsModal();
+        },
+      ),
+    );
+
+    final deviceLogins = HoloPanel(
+      child: TapToLoadSection(
+        icon: Icons.phonelink_lock_rounded,
+        label: 'Recent device logins',
+        builder: (_) =>
+            RecentDeviceLoginsSection(shopId: _slug, shopService: _service),
+      ),
+    );
+
+    final historyRequests = HoloPanel(
+      accent: ZonixColors.chartBlue,
+      child: TapToLoadSection(
+        icon: Icons.manage_history_rounded,
+        label: 'History requests',
+        builder: (_) => HistoryRequestsSection(shopId: _slug),
+      ),
+    );
+
+    final products = HoloPanel(
+      icon: Icons.inventory_2_outlined,
+      tag: 'Catalog',
+      title: _productDocs != null
+          ? 'Products (${_products.length})'
+          : 'Products (${_productCount ?? '…'})',
+      subtitle: _showProducts ? null : 'Switch on to load the catalog',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_showProducts)
+            FilledButton.tonalIcon(
+              onPressed: _addProduct,
+              icon: const Icon(Icons.add, size: AppDimens.iconLg),
+              label: const Text('Add product'),
+            ),
+          const SizedBox(width: AppDimens.spacing8),
+          NeonSwitch(
+            value: _showProducts,
+            onChanged: (v) {
+              setState(() => _showProducts = v);
+              if (v && _productDocs == null) _loadProducts();
+            },
+          ),
+        ],
+      ),
+      child: _showProducts
+          ? ProductsSection(
+              loading: _productsLoading,
+              products: _products,
+              onEdit: _editProduct,
+              onDelete: _deleteProduct,
+            )
+          : null,
+    );
 
     return RefreshIndicator(
       onRefresh: () => Future.wait([
         _load(),
-        _loadActivity(),
+        if (_showStats) _loadActivity(),
         _productDocs == null ? _loadProductCount() : _loadProducts(),
       ]),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppDimens.pageMaxWidth),
-          child: ListView(
-            padding: AppDimens.paddingAll20,
-            children: [
-              ShopSummaryCard(
-                shop: shop,
-                staffCount: _users
-                    .where((u) => u.role == 'staff' && !u.isDeleted)
-                    .length,
-                productCount: _stats?.productCount ?? _productCount ?? 0,
-                onEditStaffLimit: _editStaffLimit,
-                onEditProductLimit: _editProductLimit,
-                onEditMaxActiveDevices: _editMaxActiveDevices,
-                onToggleActive: _togglingActive ? null : _toggleActive,
-                onToggleStaffDelete: _togglingStaffDelete
-                    ? null
-                    : _toggleStaffDelete,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 1100;
+          final pulse = ShopPulseStrip(
+            shop: shop,
+            users: _users,
+            staffCount: staffCount,
+            productCount: productCount,
+          );
+
+          final List<Widget> children;
+          if (wide) {
+            children = [
+              pulse,
+              _sectionGap,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        summary,
+                        _sectionGap,
+                        trial,
+                        _sectionGap,
+                        links,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppDimens.spacing24),
+                  Expanded(
+                    flex: 7,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        users,
+                        _sectionGap,
+                        transactions,
+                        _sectionGap,
+                        deviceLogins,
+                        _sectionGap,
+                        historyRequests,
+                      ],
+                    ),
+                  ),
+                ],
               ),
+              _sectionGap,
+              statistics,
+              _sectionGap,
+              products,
+            ];
+          } else {
+            children = [
+              pulse,
+              _sectionGap,
+              summary,
               // Users sit right under the summary so role and sign-in
               // changes are reachable without scrolling.
               _sectionGap,
-              ..._buildUsers(),
+              users,
               _sectionGap,
-              const SectionHeader(
-                icon: Icons.hourglass_top_rounded,
-                label: 'Free trial',
-              ),
-              _headerGap,
-              TrialSection(
-                shop: shop,
-                onToggle: _toggleTrial,
-                onStartFor: _startTrialFor,
-                onSaveDetails: _saveTrialDetails,
-                onExtend: _extendTrial,
-              ),
+              trial,
               _sectionGap,
-              SectionHeader(
-                icon: Icons.qr_code_2_outlined,
-                label: 'Shop Links',
-                trailing: Switch(
-                  value: _showShopLinks,
-                  onChanged: (v) => setState(() => _showShopLinks = v),
+              links,
+              _sectionGap,
+              statistics,
+              _sectionGap,
+              transactions,
+              _sectionGap,
+              deviceLogins,
+              _sectionGap,
+              historyRequests,
+              _sectionGap,
+              products,
+            ];
+          }
+
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppDimens.pageMaxWidthWide,
+              ),
+              child: ListView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: wide ? 32 : AppDimens.spacing16,
+                  vertical: AppDimens.spacing24,
                 ),
+                children: children,
               ),
-              if (_showShopLinks) ...[
-                _headerGap,
-                ShopLinksSection(shop: shop, onSave: _saveShopLinks),
-              ],
-              _sectionGap,
-              ShopStatisticsSection(
-                selection: _selection,
-                onSelectFilter: _selectFilter,
-                statsLoading: _statsLoading,
-                seriesLoading: _seriesLoading,
-                stats: _stats,
-                comparison: _comparison,
-                voids: _voids,
-                dailySeries: _dailySeries,
-                hours: _hours,
-                weekdays: _weekdays,
-                performance: _performance,
-                deadStock: _deadStock,
-              ),
-              _sectionGap,
-              SectionHeader(
-                icon: Icons.receipt_long_outlined,
-                label: 'Transactions',
-                trailing: Switch(
-                  value: _showTransactions,
-                  onChanged: (v) {
-                    setState(() => _showTransactions = v);
-                    if (v) _openTransactionsModal();
-                  },
-                ),
-              ),
-              const SizedBox(height: AppDimens.spacing2),
-              Text(
-                'View sales, expenses, and additional income for this shop.',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: AppDimens.fontLabel,
-                ),
-              ),
-              _sectionGap,
-              TapToLoadSection(
-                icon: Icons.phonelink_lock_rounded,
-                label: 'Recent device logins',
-                builder: (_) => RecentDeviceLoginsSection(
-                  shopId: _slug,
-                  shopService: _service,
-                ),
-              ),
-              _sectionGap,
-              TapToLoadSection(
-                icon: Icons.manage_history_rounded,
-                label: 'History requests',
-                builder: (_) => HistoryRequestsSection(shopId: _slug),
-              ),
-              _sectionGap,
-              SectionHeader(
-                icon: Icons.inventory_2_outlined,
-                label: _productDocs != null
-                    ? 'Products (${_products.length})'
-                    : 'Products (${_productCount ?? '…'})',
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_showProducts)
-                      TextButton.icon(
-                        onPressed: _addProduct,
-                        icon: const Icon(Icons.add, size: AppDimens.iconLg),
-                        label: const Text('Add product'),
-                      ),
-                    const SizedBox(width: AppDimens.spacing4),
-                    Switch(
-                      value: _showProducts,
-                      onChanged: (v) {
-                        setState(() => _showProducts = v);
-                        if (v && _productDocs == null) _loadProducts();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              if (_showProducts) ...[
-                _headerGap,
-                ProductsSection(
-                  loading: _productsLoading,
-                  products: _products,
-                  onEdit: _editProduct,
-                  onDelete: _deleteProduct,
-                ),
-              ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  List<Widget> _buildUsers() {
-    return [
-      SectionHeader(
-        icon: Icons.group_outlined,
-        label: 'Users (${_users.length})',
-        trailing: TextButton.icon(
-          onPressed: _addUser,
-          icon: const Icon(
-            Icons.person_add_alt_1_outlined,
-            size: AppDimens.iconLg,
-          ),
-          label: const Text('Add user'),
+  Widget _buildUsersPanel() {
+    return HoloPanel(
+      icon: Icons.group_outlined,
+      tag: 'Access',
+      title: 'Users (${_users.length})',
+      subtitle: 'Owners and staff who can sign in to this shop',
+      trailing: FilledButton.icon(
+        onPressed: _addUser,
+        icon: const Icon(
+          Icons.person_add_alt_1_outlined,
+          size: AppDimens.iconLg,
         ),
+        label: const Text('Add user'),
       ),
-      _headerGap,
-      if (_users.isEmpty)
-        Card(
-          child: Padding(
-            padding: AppDimens.paddingAll20,
-            child: Text(
+      child: _users.isEmpty
+          ? Text(
               'No users yet.',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ActiveUserCountsRow(users: _users),
+                const SizedBox(height: AppDimens.spacing14),
+                UserGroup(
+                  label: 'Owners',
+                  users: _users.where((u) => u.role == 'owner').toList(),
+                  onReissueLogin: _reissueLogin,
+                  onEdit: _editUser,
+                  onDelete: _deleteUser,
+                  onViewDevices: _viewDevices,
+                  onRoleChanged: _changeUserRole,
+                  onEnabledChanged: _setUserEnabled,
+                ),
+                const SizedBox(height: AppDimens.spacing16),
+                UserGroup(
+                  label: 'Staff',
+                  users: _users.where((u) => u.role != 'owner').toList(),
+                  onReissueLogin: _reissueLogin,
+                  onEdit: _editUser,
+                  onDelete: _deleteUser,
+                  onViewDevices: _viewDevices,
+                  onRoleChanged: _changeUserRole,
+                  onEnabledChanged: _setUserEnabled,
+                ),
+              ],
             ),
-          ),
-        )
-      else ...[
-        ActiveUserCountsRow(users: _users),
-        const SizedBox(height: AppDimens.spacing14),
-        UserGroup(
-          label: 'Owners',
-          users: _users.where((u) => u.role == 'owner').toList(),
-          onReissueLogin: _reissueLogin,
-          onEdit: _editUser,
-          onDelete: _deleteUser,
-          onViewDevices: _viewDevices,
-          onRoleChanged: _changeUserRole,
-          onEnabledChanged: _setUserEnabled,
-        ),
-        const SizedBox(height: AppDimens.spacing16),
-        UserGroup(
-          label: 'Staff',
-          users: _users.where((u) => u.role != 'owner').toList(),
-          onReissueLogin: _reissueLogin,
-          onEdit: _editUser,
-          onDelete: _deleteUser,
-          onViewDevices: _viewDevices,
-          onRoleChanged: _changeUserRole,
-          onEnabledChanged: _setUserEnabled,
-        ),
-      ],
-    ];
+    );
   }
 }

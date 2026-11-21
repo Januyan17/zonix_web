@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/widgets/zonix_badge.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/app_version/screens/app_version_screen.dart';
 import 'package:zonixweb/features/auth/screens/auth_gate.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
@@ -105,8 +106,7 @@ class AdminShell extends StatelessWidget {
                   onNavigate: (page) => _navigate(context, page),
                   onLogout: () => _logout(context),
                 ),
-                const VerticalDivider(width: 1),
-                Expanded(child: body),
+                Expanded(child: ZonixBackdrop(child: body)),
               ],
             ),
             floatingActionButton: floatingActionButton,
@@ -114,27 +114,48 @@ class AdminShell extends StatelessWidget {
         }
         return Scaffold(
           appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: Colors.white,
+            scrolledUnderElevation: 0,
+            iconTheme: const IconThemeData(color: Colors.white),
+            flexibleSpace: const ZonixHeaderBackground(),
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: const [
                 ZonixBadge(size: 28),
                 SizedBox(width: AppDimens.spacing10),
                 Flexible(
-                  child: Text('Zonix Admin', overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    'Zonix Admin',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
           drawer: Drawer(
-            child: SafeArea(
-              child: AdminNavContent(
-                current: current,
-                onNavigate: (page) => _navigate(context, page),
-                onLogout: () => _logout(context),
-              ),
+            backgroundColor: Colors.transparent,
+            child: Stack(
+              children: [
+                const Positioned.fill(
+                  child: ZonixHeaderBackground(hairline: false),
+                ),
+                SafeArea(
+                  child: AdminNavContent(
+                    current: current,
+                    onNavigate: (page) => _navigate(context, page),
+                    onLogout: () => _logout(context),
+                  ),
+                ),
+              ],
             ),
           ),
-          body: body,
+          body: ZonixBackdrop(child: body),
           floatingActionButton: floatingActionButton,
         );
       },

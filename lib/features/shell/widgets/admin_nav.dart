@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
+import 'package:zonixweb/core/theme/zonix_colors.dart';
 import 'package:zonixweb/core/widgets/zonix_badge.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/billing/services/billing_service.dart';
 import 'package:zonixweb/features/billing/services/trial_overview.dart';
 import 'package:zonixweb/features/history_requests/services/history_request_service.dart';
@@ -23,17 +25,41 @@ class AdminSideNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: extended ? 240 : 84,
-      color: colorScheme.surfaceContainerLow,
-      child: SafeArea(
-        child: AdminNavContent(
-          extended: extended,
-          current: current,
-          onNavigate: onNavigate,
-          onLogout: onLogout,
-        ),
+    return SizedBox(
+      width: extended ? 248 : 88,
+      child: Stack(
+        children: [
+          const Positioned.fill(child: ZonixHeaderBackground(hairline: false)),
+          // Neon edge on the rail's right side.
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 0,
+            child: Container(
+              width: 1.5,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    ZonixColors.cyan.withValues(alpha: 0.0),
+                    ZonixColors.cyan.withValues(alpha: 0.7),
+                    ZonixColors.emerald.withValues(alpha: 0.6),
+                    ZonixColors.emerald.withValues(alpha: 0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: AdminNavContent(
+              extended: extended,
+              current: current,
+              onNavigate: onNavigate,
+              onLogout: onLogout,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -72,34 +98,94 @@ class AdminNavContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final brandMark = Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: ZonixColors.cyan.withValues(alpha: 0.35),
+            blurRadius: 18,
+          ),
+        ],
+      ),
+      child: const ZonixBadge(size: 36),
+    );
 
     final brandRow = extended
-        ? const Padding(
-            padding: EdgeInsets.fromLTRB(
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(
               AppDimens.spacing20,
-              AppDimens.spacing24,
+              28,
               AppDimens.spacing20,
               AppDimens.spacing24,
             ),
             child: Row(
               children: [
-                ZonixBadge(size: 34),
-                SizedBox(width: AppDimens.spacing12),
+                brandMark,
+                const SizedBox(width: AppDimens.spacing12),
                 Expanded(
-                  child: Text(
-                    'Zonix Admin',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Zonix Admin',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          letterSpacing: 0.2,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          const PulseDot(color: ZonixColors.emerald),
+                          const SizedBox(width: AppDimens.spacing4),
+                          Flexible(
+                            child: Text(
+                              'CONTROL CENTER',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: ZonixColors.cyan.withValues(alpha: 0.9),
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.6,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           )
-        : const Padding(
-            padding: EdgeInsets.symmetric(vertical: AppDimens.spacing24),
-            child: Center(child: ZonixBadge(size: 34)),
+        : Padding(
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            child: Center(child: brandMark),
           );
+
+    final sectionLabel = extended
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(28, 0, 20, AppDimens.spacing8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'NAVIGATION',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.8,
+                ),
+              ),
+            ),
+          )
+        : const SizedBox.shrink();
 
     final navItems = [
       AdminNavItem(
@@ -167,7 +253,7 @@ class AdminNavContent extends StatelessWidget {
         label: 'Log out',
         selected: false,
         extended: extended,
-        color: colorScheme.error,
+        color: const Color(0xFFFF8A8A),
         onTap: onLogout,
       ),
     );
@@ -175,9 +261,15 @@ class AdminNavContent extends StatelessWidget {
     return Column(
       children: [
         brandRow,
+        sectionLabel,
         ...navItems,
         const Spacer(),
-        const Divider(height: 1),
+        Divider(
+          height: 1,
+          indent: 16,
+          endIndent: 16,
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
         logoutItem,
       ],
     );

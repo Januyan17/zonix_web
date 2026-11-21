@@ -9,11 +9,13 @@ class HistoryRequestList extends StatelessWidget {
     required this.requests,
     required this.service,
     required this.onUpdated,
+    this.onDeleted,
   });
 
   final List<HistoryRequest> requests;
   final HistoryRequestService service;
   final ValueChanged<HistoryRequest> onUpdated;
+  final ValueChanged<HistoryRequest>? onDeleted;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +30,7 @@ class HistoryRequestList extends StatelessWidget {
               request: requests[i],
               service: service,
               onUpdated: onUpdated,
+              onDeleted: onDeleted,
             ),
           ],
         ],

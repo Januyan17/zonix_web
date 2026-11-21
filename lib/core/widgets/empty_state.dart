@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:zonixweb/core/theme/app_dimens.dart';
+import 'package:zonixweb/core/theme/zonix_colors.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 
 /// Full-area placeholder for a page or list with nothing in it yet.
 class EmptyState extends StatelessWidget {
@@ -27,22 +29,15 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(AppDimens.radiusSheetTop),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                icon,
-                color: colorScheme.onPrimaryContainer,
-                size: 30,
+            GlowIconTile(icon: icon, size: 72),
+            const SizedBox(height: AppDimens.spacing20),
+            Text(
+              title,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: ZonixColors.navy,
               ),
             ),
-            const SizedBox(height: AppDimens.spacing16),
-            Text(title, style: theme.textTheme.titleMedium),
             const SizedBox(height: AppDimens.spacing6),
             Text(
               message,

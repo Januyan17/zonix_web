@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/theme/zonix_colors.dart';
 import 'package:zonixweb/core/widgets/zonix_badge.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 
 /// Shared branded card layout for the signup and login screens.
 class AuthShell extends StatelessWidget {
@@ -25,72 +26,85 @@ class AuthShell extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              ZonixColors.navy.withValues(alpha: 0.14),
-              ZonixColors.emerald.withValues(alpha: 0.08),
-              ZonixColors.cyan.withValues(alpha: 0.12),
-            ],
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppDimens.spacing16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final narrow = constraints.maxWidth < 380;
-                  return Card(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        narrow ? 20 : 32,
-                        narrow ? 24 : 36,
-                        narrow ? 20 : 32,
-                        narrow ? 20 : 32,
+      backgroundColor: ZonixColors.navy,
+      body: Stack(
+        children: [
+          const Positioned.fill(child: ZonixHeaderBackground(hairline: false)),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppDimens.spacing16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 380;
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(26),
+                        border: Border.all(
+                          color: ZonixColors.cyan.withValues(alpha: 0.45),
+                          width: 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: ZonixColors.cyan.withValues(alpha: 0.28),
+                            blurRadius: 48,
+                            spreadRadius: -6,
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 40,
+                            offset: const Offset(0, 24),
+                          ),
+                        ],
                       ),
-                      child: Form(
-                        key: formKey,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Center(
-                              child: ZonixBadge(
-                                size: narrow ? 96 : 112,
-                                showLabel: true,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          narrow ? 20 : 32,
+                          narrow ? 24 : 36,
+                          narrow ? 20 : 32,
+                          narrow ? 20 : 32,
+                        ),
+                        child: Form(
+                          key: formKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Center(
+                                child: ZonixBadge(
+                                  size: narrow ? 96 : 112,
+                                  showLabel: true,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: AppDimens.spacing24),
-                            Text(
-                              title,
-                              style: textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
+                              const SizedBox(height: AppDimens.spacing24),
+                              Text(
+                                title,
+                                style: textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: AppDimens.spacing4),
-                            Text(
-                              subtitle,
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
+                              const SizedBox(height: AppDimens.spacing4),
+                              Text(
+                                subtitle,
+                                style: textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 28),
-                            ...children,
-                          ],
+                              const SizedBox(height: 28),
+                              ...children,
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

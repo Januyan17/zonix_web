@@ -116,6 +116,18 @@ class _HistoryRequestsSectionState extends State<HistoryRequestsSection> {
     });
   }
 
+  void _remove(HistoryRequest deleted) {
+    if (!mounted) return;
+    final path = deleted.ref?.path;
+    if (path == null) return;
+    setState(() {
+      _requests = [
+        for (final r in _requests)
+          if (r.ref?.path != path) r,
+      ];
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -223,6 +235,7 @@ class _HistoryRequestsSectionState extends State<HistoryRequestsSection> {
           service: _service,
           showShop: false,
           onUpdated: _replace,
+          onDeleted: _remove,
         ),
       ],
     ];

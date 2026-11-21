@@ -16,6 +16,8 @@ class OverviewHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PageHeader(
+      icon: Icons.insights_rounded,
+      tag: 'Analytics',
       title: 'Platform overview',
       subtitle: 'Loaded ${formatRelativeDate(loadedAt).toLowerCase()}',
       trailing: OutlinedButton.icon(

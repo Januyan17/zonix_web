@@ -203,6 +203,8 @@ class _AppVersionScreenState extends State<AppVersionScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const PageHeader(
+                  icon: Icons.system_update_rounded,
+                  tag: 'Release control',
                   title: 'App version',
                   subtitle:
                       'Controls the forced-update gate in the Zonix mobile '

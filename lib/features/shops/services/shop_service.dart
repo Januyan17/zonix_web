@@ -474,9 +474,9 @@ class ShopService {
       displayName: ownerDisplayName,
       email: email,
       role: 'owner',
-      // New shops start disabled and need platform-admin approval (via the
-      // Enabled toggle) before the owner can sign in.
-      isEnabled: false,
+      // The owner can sign in straight away; a platform admin can still
+      // turn sign-in off later via the Enabled toggle.
+      isEnabled: true,
       createdAt: nowIso,
       updatedAt: nowIso,
       isDeleted: false,

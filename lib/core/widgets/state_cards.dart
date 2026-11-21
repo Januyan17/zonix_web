@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 
 class LoadingCard extends StatelessWidget {
   const LoadingCard({super.key});
@@ -28,11 +29,7 @@ class EmptyCard extends StatelessWidget {
         padding: const EdgeInsets.all(32),
         child: Column(
           children: [
-            Icon(
-              Icons.inbox_outlined,
-              size: AppDimens.icon2xl,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            const GlowIconTile(icon: Icons.inbox_outlined, size: 52),
             const SizedBox(height: AppDimens.spacing12),
             Text(
               message,

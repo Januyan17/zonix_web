@@ -6,12 +6,14 @@ import 'package:zonixweb/core/utils/error_utils.dart';
 import 'package:zonixweb/core/widgets/page_header.dart';
 import 'package:zonixweb/core/widgets/section_header.dart';
 import 'package:zonixweb/core/widgets/state_cards.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
 import 'package:zonixweb/features/history_requests/models/history_request.dart';
 import 'package:zonixweb/features/history_requests/services/history_request_service.dart';
 import 'package:zonixweb/features/history_requests/utils/history_request_state.dart';
 import 'package:zonixweb/features/history_requests/widgets/history_request_list.dart';
 import 'package:zonixweb/features/shell/widgets/admin_shell.dart';
+import 'package:zonixweb/features/shops/services/shop_directory.dart';
 import 'package:zonixweb/features/shops/services/shop_service.dart';
 
 /// Phones asking to download sales history older than the current month
@@ -44,7 +46,15 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
 
   List<HistoryRequest> _recent = const [];
   HistoryRequestPage? _lastPage;
-  bool _loading = true;
+
+  /// The Recent list loads per shop, and only once a shop is picked (or
+  /// "All shops", on purpose). Pending stays live: it drives the nav badge.
+  List<({String id, String name})> _shops = const [];
+  String? _shopId;
+  bool _requested = false;
+  static const _allShops = '__all_shops__';
+
+  bool _loading = false;
   bool _loadingMore = false;
   String? _error;
   String? _moreError;
@@ -59,7 +69,7 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
   @override
   void initState() {
     super.initState();
-    _reload();
+    _loadShops();
     _expiryTicker = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       final live = hasLiveApproval(_recent, DateTime.now());
@@ -74,6 +84,35 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
     super.dispose();
   }
 
+  /// The shop dropdown is filled from the portal's own shop index — the
+  /// same shared source the Shops page lists from, so it is usually
+  /// already loaded and costs no extra reads.
+  Future<void> _loadShops() async {
+    try {
+      final docs = await ShopDirectory.instance.indexOnce();
+      if (!mounted) return;
+      setState(() {
+        _shops = [
+          for (final d in docs)
+            (id: d.id, name: d.data()['name'] as String? ?? d.id),
+        ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      });
+    } catch (_) {
+      // The filter is a convenience; "All shops" still works without it.
+    }
+  }
+
+  void _selectShop(String? value) {
+    if (value == null) return;
+    final shopId = value == _allShops ? null : value;
+    if (_requested && shopId == _shopId) return;
+    setState(() {
+      _shopId = shopId;
+      _requested = true;
+    });
+    _reload();
+  }
+
   Future<void> _reload() async {
     final generation = ++_generation;
     setState(() {
@@ -82,7 +121,7 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
       _moreError = null;
     });
     try {
-      final page = await _service.getRecent();
+      final page = await _service.getRecent(shopId: _shopId);
       if (!mounted || generation != _generation) return;
       setState(() {
         _recent = page.requests;
@@ -109,7 +148,10 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
       _moreError = null;
     });
     try {
-      final page = await _service.getRecent(startAfter: cursor);
+      final page = await _service.getRecent(
+        shopId: _shopId,
+        startAfter: cursor,
+      );
       if (!mounted || generation != _generation) return;
       setState(() {
         _recent = [..._recent, ...page.requests];
@@ -134,6 +176,20 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
     });
   }
 
+  /// Drops a deleted request from the Recent list (Pending is live and
+  /// updates by itself), without re-reading the page.
+  void _remove(HistoryRequest deleted) {
+    if (!mounted) return;
+    final path = deleted.ref?.path;
+    if (path == null) return;
+    setState(() {
+      _recent = [
+        for (final r in _recent)
+          if (r.ref?.path != path) r,
+      ];
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AdminShell(
@@ -155,6 +211,8 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const PageHeader(
+                  icon: Icons.manage_history_rounded,
+                  tag: 'Data restore',
                   title: 'History requests',
                   subtitle:
                       'After a fresh install the app only restores the current '
@@ -171,7 +229,8 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
                   icon: Icons.history_rounded,
                   label: 'Recent',
                   trailing: OutlinedButton.icon(
-                    onPressed: _loading ? null : _reload,
+                    // Nothing to refresh until a shop has been picked.
+                    onPressed: !_requested || _loading ? null : _reload,
                     icon: const Icon(
                       Icons.refresh_rounded,
                       size: AppDimens.iconLg,
@@ -180,6 +239,8 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
                   ),
                 ),
                 const SizedBox(height: AppDimens.spacing10),
+                _buildShopPicker(),
+                const SizedBox(height: AppDimens.spacing12),
                 _buildRecentSection(),
               ],
             ),
@@ -207,6 +268,7 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
         requests: requests,
         service: _service,
         onUpdated: _replace,
+        onDeleted: _remove,
       );
     }
 
@@ -226,8 +288,63 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
     );
   }
 
+  Widget _buildShopPicker() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: DropdownButtonFormField<String>(
+          // Rebuilt when the options arrive so the selection shows the
+          // shop's name.
+          key: ValueKey('${_shops.length}-$_shopId-$_requested'),
+          initialValue: _requested ? (_shopId ?? _allShops) : null,
+          isExpanded: true,
+          hint: const Text('Select a shop'),
+          decoration: const InputDecoration(
+            labelText: 'Shop',
+            prefixIcon: Icon(Icons.storefront_outlined),
+          ),
+          items: [
+            const DropdownMenuItem(value: _allShops, child: Text('All shops')),
+            for (final s in _shops)
+              DropdownMenuItem(
+                value: s.id,
+                child: Text(s.name, overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: _loading ? null : _selectShop,
+        ),
+      ),
+    );
+  }
+
   Widget _buildRecentSection() {
     final colorScheme = Theme.of(context).colorScheme;
+    if (!_requested) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            children: [
+              const GlowIconTile(icon: Icons.storefront_outlined, size: 52),
+              const SizedBox(height: AppDimens.spacing16),
+              const Text(
+                'Select a shop to see its recent requests.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: AppDimens.spacing4),
+              Text(
+                'Only the chosen shop is loaded. Pick "All shops" to load '
+                'every shop.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_loading) return const LoadingCard();
     if (_error != null) {
       return ErrorCard(
@@ -250,6 +367,7 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
             requests: groups.current,
             service: _service,
             onUpdated: _replace,
+            onDeleted: _remove,
           ),
         if (groups.expired.isNotEmpty) ...[
           const SizedBox(height: AppDimens.spacing24),
@@ -272,6 +390,7 @@ class _HistoryRequestsScreenState extends State<HistoryRequestsScreen> {
             requests: groups.expired,
             service: _service,
             onUpdated: _replace,
+            onDeleted: _remove,
           ),
         ],
         if (_moreError != null) ...[

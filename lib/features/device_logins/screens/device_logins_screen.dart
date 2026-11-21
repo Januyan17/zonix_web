@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/utils/error_utils.dart';
 import 'package:zonixweb/core/widgets/page_header.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/app_version/services/app_version_service.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
 import 'package:zonixweb/features/device_logins/models/device_login.dart';
@@ -86,7 +87,14 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
   /// 'owner', 'staff', or null for everyone. Filters what's already loaded,
   /// so switching costs no reads.
   String? _role;
-  bool _loading = true;
+
+  /// Nothing is fetched until a shop is picked (or "All shops", on
+  /// purpose). A shop's "View all" link arrives with its shop already
+  /// picked, so that entry point loads straight away.
+  late bool _requested = widget.initialShopId != null;
+  bool _floorRequested = false;
+
+  late bool _loading = _requested;
   bool _loadingMore = false;
   String? _error;
   String? _moreError;
@@ -99,7 +107,17 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
   void initState() {
     super.initState();
     _loadShops();
-    _loadFloor();
+    if (_requested) _loadNow();
+  }
+
+  /// The first load on request, and every Refresh after it. The build
+  /// floor is read once, alongside the first load.
+  void _loadNow() {
+    setState(() => _requested = true);
+    if (!_floorRequested) {
+      _floorRequested = true;
+      _loadFloor();
+    }
     _reload();
   }
 
@@ -225,10 +243,16 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
     );
   }
 
-  void _selectShop(String? shopId) {
-    if (shopId == _shopId) return;
+  /// Dropdown value for the explicit "All shops" choice — distinct from
+  /// null, which here means nothing has been picked yet.
+  static const _allShops = '__all_shops__';
+
+  void _selectShop(String? value) {
+    if (value == null) return;
+    final shopId = value == _allShops ? null : value;
+    if (_requested && shopId == _shopId) return;
     setState(() => _shopId = shopId);
-    _reload();
+    _loadNow();
   }
 
   @override
@@ -236,8 +260,8 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
     final authService = widget.authService;
     if (authService == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Device logins')),
-        body: _buildBody(),
+        appBar: zonixAppBar(title: 'Device logins', tag: 'Security'),
+        body: ZonixBackdrop(child: _buildBody()),
       );
     }
     return AdminShell(
@@ -259,6 +283,8 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const PageHeader(
+                  icon: Icons.phonelink_lock_rounded,
+                  tag: 'Security',
                   title: 'Device logins',
                   subtitle:
                       'One row per phone, newest install first. Reinstalls on '
@@ -297,16 +323,17 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
           child: DropdownButtonFormField<String?>(
             // Rebuilt when the options arrive so the selection shows the
             // shop's name rather than its id.
-            key: ValueKey('${_shops.length}-$_shopId'),
-            initialValue: _shopId,
+            key: ValueKey('${_shops.length}-$_shopId-$_requested'),
+            initialValue: _requested ? (_shopId ?? _allShops) : null,
             isExpanded: true,
+            hint: const Text('Select a shop'),
             decoration: const InputDecoration(
               labelText: 'Shop',
               prefixIcon: Icon(Icons.storefront_outlined),
             ),
             items: [
               const DropdownMenuItem<String?>(
-                value: null,
+                value: _allShops,
                 child: Text('All shops'),
               ),
               for (final s in options)
@@ -319,7 +346,8 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
           ),
         ),
         OutlinedButton.icon(
-          onPressed: _loading ? null : _reload,
+          // Nothing to refresh until a shop has been picked.
+          onPressed: !_requested || _loading ? null : _loadNow,
           icon: const Icon(Icons.refresh_rounded, size: AppDimens.iconLg),
           label: const Text('Refresh'),
         ),
@@ -329,6 +357,32 @@ class _DeviceLoginsScreenState extends State<DeviceLoginsScreen> {
 
   Widget _buildResults() {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (!_requested) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            children: [
+              const GlowIconTile(icon: Icons.storefront_outlined, size: 56),
+              const SizedBox(height: AppDimens.spacing16),
+              const Text(
+                'Select a shop to see its device logins.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: AppDimens.spacing4),
+              Text(
+                'Only the chosen shop is loaded. Pick "All shops" to load '
+                'every shop.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     if (_loading) {
       return const Padding(

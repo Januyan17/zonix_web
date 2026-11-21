@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/utils/money_format.dart';
 import 'package:zonixweb/core/widgets/section_header.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
 import 'package:zonixweb/features/billing/models/shop_billing.dart';
 import 'package:zonixweb/features/billing/services/billing_service.dart';
@@ -81,30 +82,44 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         initialIndex: widget.initialTab,
         child: Column(
           children: [
-            Material(
-              color: Theme.of(context).colorScheme.surface,
-              child: TabBar(
-                tabs: [
-                  const Tab(
-                    icon: Icon(Icons.payments_outlined),
-                    text: 'Monthly payments',
-                  ),
-                  ListenableBuilder(
-                    listenable: TrialOverview.instance,
-                    builder: (context, _) {
-                      final ended = TrialOverview.instance.endedCount;
-                      return Tab(
-                        icon: Badge(
-                          isLabelVisible: ended > 0,
-                          label: Text('$ended'),
-                          child: const Icon(Icons.hourglass_top_rounded),
+            // Dark command band: page title over the pill tabs.
+            Stack(
+              children: [
+                const Positioned.fill(child: ZonixHeaderBackground()),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 22, 20, 10),
+                      child: _PaymentsHeading(),
+                    ),
+                    ZonixPillTabBar(
+                      maxWidth: 460,
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                      tabs: [
+                        const ZonixTabLabel(
+                          icon: Icon(Icons.payments_outlined),
+                          label: 'Monthly payments',
                         ),
-                        text: 'Free trials',
-                      );
-                    },
-                  ),
-                ],
-              ),
+                        ListenableBuilder(
+                          listenable: TrialOverview.instance,
+                          builder: (context, _) {
+                            final ended = TrialOverview.instance.endedCount;
+                            return ZonixTabLabel(
+                              icon: Badge(
+                                isLabelVisible: ended > 0,
+                                label: Text('$ended'),
+                                child: const Icon(Icons.hourglass_top_rounded),
+                              ),
+                              label: 'Free trials',
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
             Expanded(
               child: TabBarView(
@@ -362,6 +377,56 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           tiles,
         ],
       ),
+    );
+  }
+}
+
+/// Title block in the Payments header band.
+class _PaymentsHeading extends StatelessWidget {
+  const _PaymentsHeading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const GlowIconTile(icon: Icons.account_balance_wallet_rounded),
+        const SizedBox(width: AppDimens.spacing14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'REVENUE',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                  color: Color(0xF238BDF6),
+                ),
+              ),
+              const SizedBox(height: 2),
+              const Text(
+                'Payments',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                'Monthly dues and free trials across every shop',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: AppDimens.fontLabel,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

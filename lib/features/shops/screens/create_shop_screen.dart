@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
+import 'package:zonixweb/core/theme/zonix_colors.dart';
 import 'package:zonixweb/core/utils/error_utils.dart';
-import 'package:zonixweb/core/widgets/section_header.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/shops/services/shop_service.dart';
 import 'package:zonixweb/features/shops/utils/slug.dart';
 import 'package:zonixweb/features/shops/widgets/shop_created_view.dart';
@@ -73,28 +74,27 @@ class _CreateShopScreenState extends State<CreateShopScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Create shop')),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppDimens.spacing24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppDimens.spacing20),
+      appBar: zonixAppBar(title: 'Create shop', tag: 'New tenant'),
+      body: ZonixBackdrop(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppDimens.spacing24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    HoloPanel(
+                      icon: Icons.storefront_outlined,
+                      tag: 'Step 1',
+                      title: 'Shop details',
+                      subtitle:
+                          'Name and the unique code the shop signs in with',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SectionHeader(
-                            icon: Icons.storefront_outlined,
-                            label: 'Shop details',
-                          ),
-                          const SizedBox(height: AppDimens.spacing16),
                           TextFormField(
                             controller: _shopNameController,
                             decoration: const InputDecoration(
@@ -126,19 +126,16 @@ class _CreateShopScreenState extends State<CreateShopScreen> {
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AppDimens.spacing16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppDimens.spacing20),
+                    const SizedBox(height: AppDimens.spacing16),
+                    HoloPanel(
+                      icon: Icons.person_outline,
+                      tag: 'Step 2',
+                      title: 'Owner account',
+                      subtitle: 'The admin login for the shop\'s mobile app',
+                      accent: ZonixColors.emerald,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SectionHeader(
-                            icon: Icons.person_outline,
-                            label: 'Owner account',
-                          ),
-                          const SizedBox(height: AppDimens.spacing16),
                           TextFormField(
                             controller: _ownerDisplayNameController,
                             decoration: const InputDecoration(
@@ -185,53 +182,70 @@ class _CreateShopScreenState extends State<CreateShopScreen> {
                         ],
                       ),
                     ),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: AppDimens.spacing16),
-                    Container(
-                      padding: const EdgeInsets.all(AppDimens.spacing12),
-                      decoration: BoxDecoration(
-                        color: colorScheme.errorContainer,
-                        borderRadius: BorderRadius.circular(
-                          AppDimens.radiusMedium,
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: colorScheme.onErrorContainer,
-                            size: AppDimens.iconXl,
+                    if (_error != null) ...[
+                      const SizedBox(height: AppDimens.spacing16),
+                      Container(
+                        padding: const EdgeInsets.all(AppDimens.spacing12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(
+                            AppDimens.radiusMedium,
                           ),
-                          const SizedBox(width: AppDimens.spacing8),
-                          Expanded(
-                            child: Text(
-                              _error!,
-                              style: TextStyle(
-                                color: colorScheme.onErrorContainer,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              color: colorScheme.onErrorContainer,
+                              size: AppDimens.iconXl,
+                            ),
+                            const SizedBox(width: AppDimens.spacing8),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: colorScheme.onErrorContainer,
+                                ),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: AppDimens.spacing20),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                          AppDimens.radiusLarge,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: ZonixColors.cyan.withValues(alpha: 0.35),
+                            blurRadius: 22,
+                            offset: const Offset(0, 8),
                           ),
                         ],
                       ),
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(64, 52),
+                        ),
+                        onPressed: _isSubmitting ? null : _submit,
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Create shop'),
+                      ),
                     ),
                   ],
-                  const SizedBox(height: AppDimens.spacing20),
-                  FilledButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Create shop'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

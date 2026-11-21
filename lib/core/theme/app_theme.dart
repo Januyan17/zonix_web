@@ -29,7 +29,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: colorScheme.surface,
+      scaffoldBackgroundColor: const Color(0xFFF2F7FC),
       visualDensity: VisualDensity.standard,
       appBarTheme: AppBarTheme(
         backgroundColor: colorScheme.surface,
@@ -43,12 +43,16 @@ class AppTheme {
           fontWeight: FontWeight.w600,
         ),
       ),
+      // Cards read as crisp white glass tiles: a faint navy hairline and a
+      // soft, wide shadow instead of a grey fill.
       cardTheme: CardThemeData(
-        elevation: 0,
-        color: colorScheme.surfaceContainerLow,
+        elevation: 3,
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: ZonixColors.navy.withValues(alpha: 0.16),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimens.radiusCard),
-          side: BorderSide(color: softOutline),
+          borderRadius: BorderRadius.circular(AppDimens.radiusCard + 2),
+          side: BorderSide(color: ZonixColors.navy.withValues(alpha: 0.08)),
         ),
         margin: EdgeInsets.zero,
       ),
@@ -119,8 +123,18 @@ class AppTheme {
       ),
       dividerTheme: DividerThemeData(color: softOutline),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: ZonixColors.navy,
+        foregroundColor: Colors.white,
+        elevation: 6,
+        hoverElevation: 10,
+        splashColor: ZonixColors.cyan.withValues(alpha: 0.3),
+        extendedTextStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimens.radiusCard),
+          side: BorderSide(color: ZonixColors.cyan.withValues(alpha: 0.6)),
         ),
       ),
       dialogTheme: DialogThemeData(

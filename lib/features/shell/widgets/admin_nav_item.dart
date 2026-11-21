@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
+import 'package:zonixweb/core/theme/zonix_colors.dart';
 
 class AdminNavItem extends StatelessWidget {
   const AdminNavItem({
@@ -31,14 +32,28 @@ class AdminNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    // The rail is dark: selected items sit on a glowing cyan pill with navy
+    // text, the rest are soft white.
     final fg =
         color ??
-        (selected ? colorScheme.primary : colorScheme.onSurfaceVariant);
-    final bg = selected
-        ? colorScheme.primaryContainer.withValues(alpha: 0.6)
-        : Colors.transparent;
-    final radius = BorderRadius.circular(AppDimens.radiusLarge);
+        (selected ? ZonixColors.navy : Colors.white.withValues(alpha: 0.72));
+    final radius = BorderRadius.circular(AppDimens.radiusLarge + 2);
+
+    final decoration = selected
+        ? BoxDecoration(
+            borderRadius: radius,
+            gradient: const LinearGradient(
+              colors: [ZonixColors.cyan, Color(0xFF22C3A6)],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: ZonixColors.cyan.withValues(alpha: 0.40),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          )
+        : BoxDecoration(borderRadius: radius);
 
     final content = extended
         ? Row(
@@ -52,8 +67,9 @@ class AdminNavItem extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: fg,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     fontSize: AppDimens.fontBodyLg,
+                    letterSpacing: 0.1,
                   ),
                 ),
               ),
@@ -72,19 +88,25 @@ class AdminNavItem extends StatelessWidget {
       ),
       child: Tooltip(
         message: extended ? '' : label,
-        child: Material(
-          color: bg,
-          borderRadius: radius,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            hoverColor: fg.withValues(alpha: 0.06),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: extended ? AppDimens.spacing14 : 0,
-                vertical: AppDimens.spacing12,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          decoration: decoration,
+          child: Material(
+            type: MaterialType.transparency,
+            borderRadius: radius,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              hoverColor: Colors.white.withValues(alpha: 0.07),
+              splashColor: ZonixColors.cyan.withValues(alpha: 0.18),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: extended ? AppDimens.spacing14 : 0,
+                  vertical: AppDimens.spacing12,
+                ),
+                child: content,
               ),
-              child: content,
             ),
           ),
         ),

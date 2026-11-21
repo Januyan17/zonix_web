@@ -112,6 +112,14 @@ class HistoryRequestService {
     if (uid == null) throw const NotSignedInException();
     await ref.update({'status': 'denied', 'approved_by': uid});
   }
+
+  /// Permanently deletes the request document. Rules allow this for
+  /// platform super admins only. The phone loses any approval it had and
+  /// can send a fresh request later.
+  Future<void> delete(DocumentReference<Map<String, dynamic>> ref) async {
+    if (_auth.currentUser == null) throw const NotSignedInException();
+    await ref.delete();
+  }
 }
 
 /// One shared live listener on [HistoryRequestService.watchPending], for the

@@ -30,7 +30,11 @@ class ShopStatisticsSection extends StatelessWidget {
     required this.weekdays,
     required this.performance,
     required this.deadStock,
+    this.showHeader = true,
   });
+
+  /// False when the host already shows a "Statistics" header of its own.
+  final bool showHeader;
 
   final ShopDateFilterSelection selection;
   final ValueChanged<ShopDateFilter> onSelectFilter;
@@ -56,8 +60,13 @@ class ShopStatisticsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeader(icon: Icons.insights_outlined, label: 'Statistics'),
-        const SizedBox(height: AppDimens.spacing10),
+        if (showHeader) ...[
+          const SectionHeader(
+            icon: Icons.insights_outlined,
+            label: 'Statistics',
+          ),
+          const SizedBox(height: AppDimens.spacing10),
+        ],
         FilterRow<ShopDateFilter>(
           selected: filter,
           onSelect: onSelectFilter,

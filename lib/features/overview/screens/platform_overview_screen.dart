@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:zonixweb/core/theme/app_dimens.dart';
 import 'package:zonixweb/core/utils/error_utils.dart';
+import 'package:zonixweb/core/widgets/page_header.dart';
+import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/app_version/models/app_version_config.dart';
 import 'package:zonixweb/features/app_version/services/app_version_service.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
@@ -23,7 +25,8 @@ import 'package:zonixweb/features/shops/services/shop_service.dart';
 /// adoption, and update-gate adoption — the things a platform admin needs
 /// that no single shop's page can answer.
 ///
-/// The page loads its cheap tier automatically. Revenue across every shop
+/// Nothing is read until the admin presses "Load overview" (results from
+/// the last few minutes are shown again without a read). Revenue across every shop
 /// sits behind a button on purpose: it reads every transaction document of
 /// every shop, which grows without bound as history accumulates, and is not
 /// something a page should do just because someone opened it.
@@ -51,7 +54,7 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
   late final AppVersionService _appVersion =
       widget.appVersionService ?? AppVersionService();
 
-  bool _loading = true;
+  bool _loading = false;
   String? _loadError;
   PlatformHealth? _health;
   AppVersionConfig? _versionConfig;
@@ -84,11 +87,9 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
     if (cached != null &&
         DateTime.now().difference(cached.loadedAt) < _healthMaxAge) {
       _health = cached;
-      _loading = false;
       _loadVersionConfig();
-    } else {
-      _load();
     }
+    // Otherwise nothing is read until "Load overview" is pressed.
   }
 
   Future<void> _loadVersionConfig() async {
@@ -195,7 +196,8 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
       );
     }
 
-    final health = _health!;
+    final health = _health;
+    if (health == null) return _buildNotLoaded();
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -227,6 +229,52 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Before the first load: the header and a single button, no reads.
+  Widget _buildNotLoaded() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListView(
+      padding: AppDimens.paddingAll24,
+      children: [
+        const PageHeader(
+          icon: Icons.insights_rounded,
+          tag: 'Analytics',
+          title: 'Platform overview',
+          subtitle: 'Not loaded yet',
+        ),
+        const SizedBox(height: AppDimens.spacing16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              children: [
+                const GlowIconTile(icon: Icons.insights_rounded, size: 56),
+                const SizedBox(height: AppDimens.spacing16),
+                const Text(
+                  'The overview isn\'t loaded yet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: AppDimens.spacing4),
+                Text(
+                  'Loading reads every shop\'s details, users, product '
+                  'count and latest sales, so it only runs when you ask.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppDimens.spacing20),
+                FilledButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.download_rounded),
+                  label: const Text('Load overview'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
