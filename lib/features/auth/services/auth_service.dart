@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:zonixweb/core/services/supabase_access_token.dart';
 
 class AdminSignupRaceException implements Exception {
   const AdminSignupRaceException();
@@ -104,6 +105,8 @@ class AuthService {
       await _auth.signOut();
       throw const NotAnAdminException();
     }
+    // Pick up a Supabase role claim set since the last token was issued.
+    await SupabaseAccessToken.refreshAfterSignIn(user);
   }
 
   Future<void> signOut() => _auth.signOut();

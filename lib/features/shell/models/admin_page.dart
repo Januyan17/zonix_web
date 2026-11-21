@@ -9,7 +9,7 @@ enum AdminPage {
   payments,
   appVersion,
   trialSettings,
-  joinContact,
+  contactZonix,
   deviceLogins,
   historyRequests,
 }

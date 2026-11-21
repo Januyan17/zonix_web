@@ -5,6 +5,7 @@ import 'package:zonixweb/core/widgets/zonix_badge.dart';
 import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/billing/services/billing_service.dart';
 import 'package:zonixweb/features/billing/services/trial_overview.dart';
+import 'package:zonixweb/features/contact_zonix/services/contact_request_service.dart';
 import 'package:zonixweb/features/history_requests/services/history_request_service.dart';
 import 'package:zonixweb/features/shell/models/admin_page.dart';
 import 'package:zonixweb/features/shell/widgets/admin_nav_item.dart';
@@ -231,12 +232,17 @@ class AdminNavContent extends StatelessWidget {
         extended: extended,
         onTap: () => onNavigate(AdminPage.trialSettings),
       ),
-      AdminNavItem(
-        icon: Icons.support_agent_rounded,
-        label: 'Join contact',
-        selected: current == AdminPage.joinContact,
-        extended: extended,
-        onTap: () => onNavigate(AdminPage.joinContact),
+      // New join requests, from the one shared Supabase listener.
+      ListenableBuilder(
+        listenable: contactRequestsFeed,
+        builder: (context, _) => AdminNavItem(
+          icon: Icons.support_agent_rounded,
+          label: 'Contact Zonix',
+          selected: current == AdminPage.contactZonix,
+          extended: extended,
+          badgeLabel: _countLabel(newContactRequestCount()),
+          onTap: () => onNavigate(AdminPage.contactZonix),
+        ),
       ),
       AdminNavItem(
         icon: Icons.phonelink_lock_rounded,

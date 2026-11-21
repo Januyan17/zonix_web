@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:zonixweb/app/zonix_admin_app.dart';
 import 'package:zonixweb/core/config/supabase_options.dart';
+import 'package:zonixweb/core/services/supabase_access_token.dart';
 import 'package:zonixweb/firebase_options.dart';
 
 Future<void> main() async {
@@ -24,6 +25,9 @@ Future<void> main() async {
   await Supabase.initialize(
     url: SupabaseOptions.url,
     publishableKey: SupabaseOptions.anonKey,
+    // Admins sign in with Firebase; Supabase recognises them through
+    // Third-Party Auth. Null (signed out, or no role claim yet) means anon.
+    accessToken: SupabaseAccessToken.get,
   );
   runApp(const ZonixAdminApp());
 }

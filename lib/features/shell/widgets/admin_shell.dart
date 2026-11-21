@@ -6,9 +6,9 @@ import 'package:zonixweb/features/app_version/screens/app_version_screen.dart';
 import 'package:zonixweb/features/auth/screens/auth_gate.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
 import 'package:zonixweb/features/billing/screens/payments_screen.dart';
+import 'package:zonixweb/features/contact_zonix/screens/contact_zonix_screen.dart';
 import 'package:zonixweb/features/device_logins/screens/device_logins_screen.dart';
 import 'package:zonixweb/features/history_requests/screens/history_requests_screen.dart';
-import 'package:zonixweb/features/join_contact/screens/join_contact_screen.dart';
 import 'package:zonixweb/features/overview/screens/platform_overview_screen.dart';
 import 'package:zonixweb/features/shell/models/admin_page.dart';
 import 'package:zonixweb/features/shell/widgets/admin_nav.dart';
@@ -83,7 +83,7 @@ class AdminShell extends StatelessWidget {
             authService: authService,
             shopService: shopService,
           ),
-          AdminPage.joinContact => JoinContactScreen(
+          AdminPage.contactZonix => ContactZonixScreen(
             authService: authService,
             shopService: shopService,
           ),

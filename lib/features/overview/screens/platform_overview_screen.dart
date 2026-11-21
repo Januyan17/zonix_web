@@ -6,6 +6,8 @@ import 'package:zonixweb/core/widgets/zonix_chrome.dart';
 import 'package:zonixweb/features/app_version/models/app_version_config.dart';
 import 'package:zonixweb/features/app_version/services/app_version_service.dart';
 import 'package:zonixweb/features/auth/services/auth_service.dart';
+import 'package:zonixweb/features/contact_zonix/screens/contact_zonix_screen.dart';
+import 'package:zonixweb/features/contact_zonix/widgets/contact_zonix_overview_card.dart';
 import 'package:zonixweb/features/overview/models/platform_stats.dart';
 import 'package:zonixweb/features/overview/services/platform_stats_service.dart';
 import 'package:zonixweb/features/overview/widgets/activity_mix_card.dart';
@@ -176,6 +178,20 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
     );
   }
 
+  /// Opens the Contact Zonix page on its Requests tab, replacing this page
+  /// like the nav rail does.
+  void _openContactRequests() {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ContactZonixScreen(
+          authService: widget.authService,
+          shopService: widget.shopService,
+          initialTab: 1,
+        ),
+      ),
+    );
+  }
+
   Widget _buildBody() {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -206,6 +222,8 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
           OverviewHeader(loadedAt: health.loadedAt, onRefresh: _load),
           const SizedBox(height: AppDimens.spacing16),
           OverviewSummaryTiles(health: health),
+          const SizedBox(height: AppDimens.spacing16),
+          ContactZonixOverviewCard(onOpenRequests: _openContactRequests),
           const SizedBox(height: AppDimens.spacing16),
           ActivityMixCard(health: health),
           const SizedBox(height: AppDimens.spacing16),
@@ -244,6 +262,8 @@ class _PlatformOverviewScreenState extends State<PlatformOverviewScreen> {
           title: 'Platform overview',
           subtitle: 'Not loaded yet',
         ),
+        const SizedBox(height: AppDimens.spacing16),
+        ContactZonixOverviewCard(onOpenRequests: _openContactRequests),
         const SizedBox(height: AppDimens.spacing16),
         Card(
           child: Padding(
