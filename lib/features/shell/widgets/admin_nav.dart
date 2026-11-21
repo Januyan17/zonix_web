@@ -225,6 +225,13 @@ class AdminNavContent extends StatelessWidget {
         onTap: () => onNavigate(AdminPage.appVersion),
       ),
       AdminNavItem(
+        icon: Icons.hourglass_top_rounded,
+        label: 'Trial settings',
+        selected: current == AdminPage.trialSettings,
+        extended: extended,
+        onTap: () => onNavigate(AdminPage.trialSettings),
+      ),
+      AdminNavItem(
         icon: Icons.phonelink_lock_rounded,
         label: 'Device logins',
         selected: current == AdminPage.deviceLogins,

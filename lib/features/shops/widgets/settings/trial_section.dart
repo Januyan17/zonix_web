@@ -222,7 +222,8 @@ class _TrialSectionState extends State<TrialSection> {
                   decoration: const InputDecoration(
                     labelText: 'Lock message',
                     hintText: 'e.g. payment instructions',
-                    helperText: 'Leave empty to use the app\'s default text',
+                    helperText:
+                        'Leave empty to use the common message for all shops',
                     prefixIcon: Icon(Icons.message_outlined),
                     alignLabelWithHint: true,
                   ),
@@ -233,7 +234,8 @@ class _TrialSectionState extends State<TrialSection> {
                   decoration: const InputDecoration(
                     labelText: 'Payment contact',
                     hintText: '+94 77 123 4567 or https://wa.me/...',
-                    helperText: 'Shown as a "Contact us to pay" button',
+                    helperText:
+                        'Leave empty to use the common contact for all shops',
                     prefixIcon: Icon(Icons.contact_phone_outlined),
                   ),
                   validator: trialContactError,

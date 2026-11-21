@@ -13,6 +13,7 @@ import 'package:zonixweb/features/shell/models/admin_page.dart';
 import 'package:zonixweb/features/shell/widgets/admin_nav.dart';
 import 'package:zonixweb/features/shops/screens/shop_list_screen.dart';
 import 'package:zonixweb/features/shops/services/shop_service.dart';
+import 'package:zonixweb/features/trial_settings/screens/trial_settings_screen.dart';
 
 export 'package:zonixweb/features/shell/models/admin_page.dart';
 
@@ -74,6 +75,10 @@ class AdminShell extends StatelessWidget {
             shopService: shopService,
           ),
           AdminPage.appVersion => AppVersionScreen(
+            authService: authService,
+            shopService: shopService,
+          ),
+          AdminPage.trialSettings => TrialSettingsScreen(
             authService: authService,
             shopService: shopService,
           ),
